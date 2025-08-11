@@ -286,6 +286,7 @@ https://api.2.rahti.csc.fi:6443/apis/build.openshift.io/v1/namespaces/<projekti>
 - Varmista että portit täsmäävät konfiguraatiossa
 
 - [CSC Rahti docs webhookin määrittelyy](https://csc-guide-preview.2.rahtiapp.fi/origin/kkmattil-sequencing-center-tutorial-2/cloud/tutorials/webhooks/#github)
+- [Authenticating pipelines using git secret](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.10/html/securing_openshift_pipelines/authenticating-pipelines-using-git-secret)
 
 ## Hyödyllisiä vinkkejä Rahti/Docker ympäristöön
 
