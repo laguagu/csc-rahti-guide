@@ -285,6 +285,8 @@ https://api.2.rahti.csc.fi:6443/apis/build.openshift.io/v1/namespaces/<projekti>
 - Ongelma voidaan kiertää käyttämällä ensin Builder Imagea ja sen jälkeen konfiguroimalla BuildConfig käyttämään Dockerfilea
 - Varmista että portit täsmäävät konfiguraatiossa
 
+- [CSC Rahti docs webhookin määrittelyy](https://csc-guide-preview.2.rahtiapp.fi/origin/kkmattil-sequencing-center-tutorial-2/cloud/tutorials/webhooks/#github)
+
 ## Hyödyllisiä vinkkejä Rahti/Docker ympäristöön
 
 ### Tagien käyttö
