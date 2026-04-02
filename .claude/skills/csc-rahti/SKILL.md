@@ -54,6 +54,10 @@ oc set resources deployment/<deployment> -n <namespace> --limits=memory=2Gi
 
 ## Build & Push Docker Image
 
+Two registry options:
+
+### Option A: Rahti Internal Registry (requires ImageStream)
+
 ```bash
 # 1. Build image locally
 docker build -t <image-name> .
@@ -68,9 +72,41 @@ docker tag <image-name> image-registry.apps.2.rahti.csc.fi/<namespace>/<image-na
 docker push image-registry.apps.2.rahti.csc.fi/<namespace>/<image-name>:latest
 ```
 
+ImageStream must exist before pushing. Create if needed:
+```bash
+oc create imagestream <name> -n <namespace>
+```
+
+**Bootstrap tip:** Push to DockerHub first → Rahti auto-creates the ImageStream on first deploy → then switch to Rahti registry for subsequent pushes.
+
+### Option B: DockerHub
+
+```bash
+docker tag <image-name> <dockerhub-username>/<image-name>:latest
+docker push <dockerhub-username>/<image-name>:latest
+```
+
 **Placeholders:**
 - `<image-name>`: Your Docker image name (e.g., `myapp`)
 - `<namespace>`: Rahti project/namespace (e.g., `gaik`)
+
+## Deploy via Web Console
+
+1. Go to Rahti web console → your project
+2. Click **Add → Container images**
+3. In "Deploy Image":
+   - Select "Deploy an existing Image from an Image Stream or Image registry"
+   - Enter DockerHub image (`username/image:latest`) or choose from internal registry
+4. Set **Target port** to match your app's listening port (e.g., 3000)
+5. Set **Application** name and component **Name**
+6. Rahti auto-generates a public HTTPS hostname
+
+**Private DockerHub images:** Create an "Image pull secret" with registry `docker.io`, username and password before deploying.
+
+**Deployment settings (after creation):**
+- **Deployment strategy**: Rolling Update (recommended)
+- **Auto deploy**: Enable "Auto deploy when new Image is available"
+- **Environment Variables**: Add as Name/Value pairs in deployment settings
 
 ## Common oc Commands
 
@@ -163,11 +199,29 @@ USER 1001
 
 Key pattern: `chown 1001:0` + `chmod g+rwx` = any UID with group 0 can write.
 
-## GitHub Webhook CI/CD (Recommended)
+## GitHub Integration (BuildConfig)
 
-Automates deployment: `git push` → GitHub webhook → Rahti builds image → auto rollout.
+Automates deployment: `git push` → webhook → Rahti builds image → auto rollout.
 
-### Setup
+### Known bug: "URL is valid but cannot be reached"
+
+When creating a project directly from GitHub with SSH + Dockerfile strategy, Rahti 2 shows this error even when SSH is configured correctly. **Workaround:**
+1. Create the project using a Builder Image first (e.g., Node.js 18 UBI 8)
+2. After creation, edit the BuildConfig YAML to switch to Docker strategy:
+
+```yaml
+strategy:
+  type: Docker
+  dockerStrategy:
+    dockerfilePath: Dockerfile
+```
+
+### Builder Image vs Custom Dockerfile
+
+- **Builder Image** (simpler): Works for standard Node.js apps, no Dockerfile needed, faster setup
+- **Custom Dockerfile** (flexible): Required for React/Vite, multi-stage builds, special dependencies — requires the two-step workaround above
+
+### Setup via CLI (recommended for full control)
 
 ```bash
 # 1. Create SSH key pair
@@ -189,8 +243,18 @@ oc create secret generic github-webhook-secret \
 oc apply -f buildconfig.yaml -n <namespace>
 
 # 6. Get webhook URL and add to GitHub → Settings → Webhooks
-oc describe bc/<buildconfig-name> -n <namespace> | grep -A2 "GitHub"
+oc describe bc/<buildconfig-name> -n <namespace> | grep -A2 "Webhook"
 ```
+
+### Webhook URL format (generic)
+
+```
+https://api.2.rahti.csc.fi:6443/apis/build.openshift.io/v1/namespaces/<namespace>/buildconfigs/<buildconfig>/webhooks/<secret>/generic
+```
+
+Copy from Rahti UI: BuildConfig → Webhooks → "Copy URL with Secret"
+
+GitHub webhook settings: Content type `application/json`, SSL enabled, trigger on push events only.
 
 ### BuildConfig YAML (Docker strategy)
 
@@ -238,6 +302,8 @@ oc start-build <bc-name> -n <namespace>   # Trigger manually
 
 ## PostgreSQL on Rahti
 
+### Standard PostgreSQL
+
 ```bash
 # Create secret
 oc create secret generic postgresql-secrets \
@@ -247,11 +313,44 @@ oc create secret generic postgresql-secrets \
 # Apply manifests (PVC + Deployment + Service + ConfigMap)
 oc apply -f postgresql/ -n <namespace>
 
-# Port-forward for local access (run db:tunnel scripts)
+# Port-forward for local access
 oc port-forward service/postgresql 5432:5432 -n <namespace>
 ```
 
 Image: `image-registry.openshift-image-registry.svc:5000/openshift/postgresql:16-el9`
+
+### PostgreSQL + pgVector
+
+For AI/vector search workloads, deploy via web console:
+
+1. **Add → Container images** → Image name from external registry:
+   ```
+   quay.io/rh-aiservices-bu/postgresql-15-pgvector-c9s
+   ```
+2. Set environment variables:
+   - `POSTGRESQL_USER=postgres`
+   - `POSTGRESQL_PASSWORD=<strong-password>`
+   - `POSTGRESQL_DATABASE=vectordb`
+3. **Do NOT create a Route** (database should be internal only)
+4. After deployment, add persistent storage: **Actions → Add Storage**
+   - Name: `pgvector-data`, Access mode: RWO, Size: 5 GiB+
+   - Mount path: `/var/lib/pgsql/data`
+
+**Enable pgVector extension:**
+```sql
+CREATE EXTENSION vector;
+```
+
+**Connect from application in same namespace:**
+```
+DATABASE_URL=postgresql://postgres:<password>@postgresql-pgvector:5432/vectordb
+```
+
+**Local admin access via pgAdmin:**
+```bash
+oc port-forward svc/postgresql-pgvector 5432:5432 -n <namespace>
+# Connect pgAdmin to localhost:5432
+```
 
 ## OpenShift Binary Build (Alternative)
 

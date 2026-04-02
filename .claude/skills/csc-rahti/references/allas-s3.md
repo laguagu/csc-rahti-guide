@@ -4,31 +4,84 @@ CSC Allas is an S3-compatible object storage service.
 
 ## Connection Details
 
-| Parameter | Value |
-|-----------|-------|
-| Endpoint | `https://a3s.fi` |
-| Region | `regionOne` |
+| Service | Endpoint | Region |
+|---------|----------|--------|
+| S3 API | `https://a3s.fi` | `regionOne` |
+| Swift API | `https://a3s.fi:443/swift/v1/AUTH_<project-id>` | `regionOne` |
 
-## Get S3 Credentials
+Note: Region is always `regionOne` regardless of physical location.
 
-1. Login to [CSC Pouta](https://pouta.csc.fi)
-2. Go to API Access
-3. Download `clouds.yaml`
-4. Use OpenStack CLI to generate credentials:
+## Quick Option: Automated Script
+
+The repo includes `get_s3_credentials.py` which automates credential retrieval:
 
 ```bash
-# Install OpenStack client
+pip install keystoneauth1 python-keystoneclient pyyaml
+python get_s3_credentials.py
+```
+
+The script loads `clouds.yaml`, prompts for password, lists or creates credentials, and prints Access Key + Secret Key.
+
+## Manual Credential Retrieval
+
+### 1. Create S3 Bucket (prerequisite)
+
+Before retrieving credentials, create your bucket:
+
+1. Login to [Allas UI](https://allas.csc.fi/)
+2. Select the correct project from the left menu
+3. Click **+ Create bucket** and give it a unique name
+
+**Bucket naming:** Use `<project-id>-<purpose>` format (e.g., `2000620-raw-data`). Lowercase, numbers, hyphens only — no umlauts or special characters.
+
+### 2. Get clouds.yaml
+
+1. Login to [CSC Pouta](https://pouta.csc.fi)
+2. Go to **API Access**
+3. Download **OpenStack clouds.yaml file**
+4. Save to `~/.config/openstack/clouds.yaml`
+
+### 3. Install OpenStack CLI
+
+```bash
 pip install python-openstackclient
+```
 
-# Set cloud config
-$env:OS_CLOUD = "openstack"  # PowerShell
-export OS_CLOUD=openstack    # Bash
+### 4. Set Cloud Config and Verify Project
 
+```bash
+export OS_CLOUD=openstack   # Bash
+$env:OS_CLOUD = "openstack" # PowerShell
+```
+
+S3 credentials are **project-specific** — verify you're in the right project:
+
+```bash
+# Check current project (auth.project_id must match bucket's project)
+openstack configuration show
+
+# List available projects
+openstack project list
+
+# Switch project if needed
+openstack project set <project-name>
+# e.g.: openstack project set project_2013111
+```
+
+### 5. Get Credentials
+
+```bash
 # List existing credentials
 openstack ec2 credentials list
 
-# Create new credentials (if needed)
+# Create new credentials (if none exist)
 openstack ec2 credentials create
+```
+
+Output:
+```
+| Access                           | Secret                           | Project ID |
+| abc123def456ghi789jkl012mno345pq | xyz789uvw456rst123qpo890lmn567abc | def456...  |
 ```
 
 ## Environment Variables
@@ -101,10 +154,3 @@ oc set env deployment/<deployment> -n <namespace> \
   ALLAS_SECRET_ACCESS_KEY=your-secret-key \
   ALLAS_BUCKET_NAME=your-bucket-name
 ```
-
-## Bucket Naming
-
-CSC recommends including project ID in bucket names:
-- Format: `<project-id>-<purpose>` (e.g., `2000620-raw-data`)
-- Use lowercase letters, numbers, and hyphens only
-- No special characters (no umlauts: a, o)
