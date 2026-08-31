@@ -11,6 +11,7 @@
 - [Option C: separate services](#option-c-separate-services)
 - [API paths across the models](#api-paths-across-the-models)
 - [CORS](#cors)
+- [The framework does not matter](#the-framework-does-not-matter)
 - [Health checks and Basic Auth](#health-checks-and-basic-auth)
 - [Ports](#ports)
 
@@ -151,7 +152,8 @@ RUN npm run build
 FROM node:24-alpine
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
-RUN npm install -g serve
+RUN npm install -g serve &&     chown -R 1001:0 /app && chmod -R g+rwX /app
+USER 1001
 EXPOSE 8080
 CMD ["serve", "-s", "dist", "-p", "8080"]
 ```
@@ -263,6 +265,32 @@ readinessProbe:
 > requires Basic Auth on **every** path, the `httpGet` check gets a 401, the pod never
 > reaches Ready, and the rollout hangs forever. Use either a `tcpSocket` check or exempt
 > `/health` from authentication.
+
+## The framework does not matter
+
+The examples use Express and Vite because they are the most familiar, but Rahti knows
+nothing about frameworks. Hono, Fastify, NestJS, FastAPI, Flask, Spring Boot, Go, Rust
+or anything else works, as long as the container meets these four conditions:
+
+1. listens on `0.0.0.0`, not `127.0.0.1`
+2. reads the port from the `PORT` environment variable, or uses a fixed port above 1024
+3. does not require root or a specific UID
+4. serves some path the health probe can fetch without authentication
+
+Hono on Node, for example:
+
+```javascript
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+
+const app = new Hono();
+app.get("/health", (c) => c.json({ status: "ok" }));
+
+serve({ fetch: app.fetch, port: Number(process.env.PORT) || 8080, hostname: "0.0.0.0" });
+```
+
+Everything else in this guide (Dockerfile, Service, Route, secrets) is exactly the same
+regardless of what you wrote inside.
 
 ## Ports
 

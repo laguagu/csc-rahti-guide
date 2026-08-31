@@ -11,6 +11,7 @@
 - [Vaihtoehto C: erilliset palvelut](#vaihtoehto-c-erilliset-palvelut)
 - [API-polut eri malleissa](#api-polut-eri-malleissa)
 - [CORS](#cors)
+- [Frameworkilla ei ole väliä](#frameworkilla-ei-ole-väliä)
 - [Terveystarkistukset ja Basic Auth](#terveystarkistukset-ja-basic-auth)
 - [Portit](#portit)
 
@@ -151,7 +152,8 @@ RUN npm run build
 FROM node:24-alpine
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
-RUN npm install -g serve
+RUN npm install -g serve &&     chown -R 1001:0 /app && chmod -R g+rwX /app
+USER 1001
 EXPOSE 8080
 CMD ["serve", "-s", "dist", "-p", "8080"]
 ```
@@ -261,6 +263,32 @@ readinessProbe:
 > `proxy.ts`) vaatii Basic Authin **kaikilla** poluilla, `httpGet`-tarkistus saa 401,
 > podi ei koskaan siirry Ready-tilaan ja rullaus jää roikkumaan ikuisesti. Käytä joko
 > `tcpSocket`-tarkistusta tai jätä `/health` autentikoinnin ulkopuolelle.
+
+## Frameworkilla ei ole väliä
+
+Esimerkeissä on Express ja Vite, koska ne ovat tutuimpia, mutta Rahti ei tiedä mitään
+frameworkeista. Hono, Fastify, NestJS, FastAPI, Flask, Spring Boot, Go, Rust ja mikä
+tahansa muu toimii, kunhan kontti täyttää nämä neljä ehtoa:
+
+1. kuuntelee `0.0.0.0`, ei `127.0.0.1`
+2. lukee portin `PORT`-ympäristömuuttujasta tai käyttää kiinteää porttia yli 1024
+3. ei vaadi rootia eikä tiettyä UID:tä
+4. tarjoaa jonkin polun jonka terveystarkistus voi hakea ilman kirjautumista
+
+Esimerkiksi Hono Nodella:
+
+```javascript
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+
+const app = new Hono();
+app.get("/health", (c) => c.json({ status: "ok" }));
+
+serve({ fetch: app.fetch, port: Number(process.env.PORT) || 8080, hostname: "0.0.0.0" });
+```
+
+Loput tästä ohjeesta (Dockerfile, Service, Route, salaisuudet) on täsmälleen sama
+riippumatta siitä mitä kirjoitit sisälle.
 
 ## Portit
 
