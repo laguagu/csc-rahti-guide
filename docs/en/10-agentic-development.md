@@ -274,8 +274,18 @@ installable unit:
 > a valid TLS certificate (the browser warns you), so the links above are the working
 > sources.
 
-This repository's four skills work as-is without packaging, so a plugin isn't needed
-until distribution grows beyond a handful of individual users.
+**Why isn't this repo packaged as a plugin?** It was considered and rejected, for three
+reasons:
+
+1. A Claude Code plugin reads skills from `skills/` at the plugin root, not from
+   `.claude/skills/`. The skills would have to be either moved, which would stop a plain
+   clone from loading them, or duplicated, which lets two copies drift apart.
+2. The plugin format is Claude Code specific. It does nothing for a Copilot, Cursor or
+   Codex user, and the whole point of this repo is that one file serves all of them.
+3. `cp -r` is not a real obstacle for anyone.
+
+If distribution ever grows, packaging is worth doing then. The calculation changes once
+a tool-independent specification is settled enough that one package serves every agent.
 
 **CSC's own documentation**
 

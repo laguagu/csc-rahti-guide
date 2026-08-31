@@ -276,8 +276,19 @@ kokonaisuutena:
 > Spesifikaatiosivu `agent-plugins.org` ei tätä kirjoitettaessa vastaa oikealla
 > TLS-sertifikaatilla (selain varoittaa), joten yllä on toimivat lähteet.
 
-Tämän repon neljä skilliä toimivat sellaisenaan ilman paketointia, joten pluginia ei
-tarvita ennen kuin jakelu kasvaa yksittäisiä käyttäjiä suuremmaksi.
+**Miksi tätä repoa ei ole paketoitu pluginiksi?** Harkittiin ja jätettiin tekemättä
+kolmesta syystä:
+
+1. Claude Coden plugin lukee skillit polusta `skills/` plugin-juuressa, ei polusta
+   `.claude/skills/`. Skillit pitäisi siis joko siirtää, jolloin pelkkä repon kloonaus
+   ei enää lataisi niitä, tai monistaa, jolloin kaksi kopiota eriytyy.
+2. Plugin-formaatti on Claude Code -kohtainen. Se ei auta Copilotin, Cursorin tai
+   Codexin käyttäjää, ja koko repon idea on että sama tiedosto käy kaikille.
+3. `cp -r` ei ole kenellekään oikea este.
+
+Jos jakelu joskus kasvaa, paketointi kannattaa tehdä silloin. Tilanne muuttuu jos
+työkaluriippumaton spesifikaatio vakiintuu niin, että yksi paketti palvelee kaikkia
+agentteja.
 
 **CSC:n omat dokumentit**
 

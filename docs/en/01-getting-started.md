@@ -7,6 +7,7 @@
 
 - [What Rahti 2 is](#what-rahti-2-is)
   - [What if Rahti isn't the right fit?](#what-if-rahti-isnt-the-right-fit)
+  - [CSC's other services on the same project](#cscs-other-services-on-the-same-project)
 - [Prerequisites](#prerequisites)
 - [Logging in from the browser](#logging-in-from-the-browser)
 - [Creating a project](#creating-a-project)
@@ -61,6 +62,39 @@ models stay on CSC's side.
 | App URL space | `*.2.rahtiapp.fi` |
 | Egress IP (for firewall rules) | `86.50.229.150` — can change, always check the [documentation](https://docs.csc.fi/cloud/rahti/configurations/egress-ip/) |
 
+### CSC's other services on the same project
+
+Rahti access opens the door to CSC's other services on the same computing project.
+These often turn up in the same application:
+
+| Service | For | Guide |
+| --- | --- | --- |
+| **Satama** | Container registry (Harbor), sharing images across projects, vulnerability scanning | [chapter 2](02-deploying.md#option-b-satama-cscs-harbor) |
+| **Allas** | Object storage over S3, large files and backups | [chapter 8](08-allas-s3.md) |
+| **Aitta** | Ready-made language and embedding models behind an OpenAI-compatible API | [csc-rahti skill](../../.claude/skills/csc-rahti/references/aitta-llm-api.md) |
+| **Roihu** | NVIDIA GH200 GPUs, model training and batch jobs | [csc-roihu skill](../../.claude/skills/csc-roihu/) |
+| **LUMI** | AMD MI250X, EuroHPC allocation | [csc-lumi skill](../../.claude/skills/csc-lumi/) |
+
+**Aitta** is particularly handy for teaching: you get language and embedding models
+behind an API without your own GPU and without a commercial API key. The models run on
+the LUMI supercomputer and the API is OpenAI-compatible, so existing code works by
+changing `baseURL`.
+
+![The Aitta service front page](../images/aitta.jpg)
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://aitta-api.csc.fi/openai",   # AITTA_API_BASE
+    api_key="<AITTA_API_TOKEN>",                   # token: https://aitta-auth.csc.fi
+)
+```
+
+The catalogue includes Llama 3.3, gpt-oss, Gemma 3, Qwen3-VL, embedding models and the
+Finnish **Poro 2**. Most models are "offline", meaning they have to be woken with
+`POST /model/{id}/preload` before the first chat completion.
+
 ## Prerequisites
 
 1. **A CSC user account** — created at [MyCSC](https://my.csc.fi/).
@@ -71,6 +105,24 @@ models stay on CSC's side.
    - CSC confirms the application. Permission sync can take about 10 minutes.
 3. **Docker or Podman** locally, if you build images yourself.
 4. **The `oc` command-line tool**, if you don't want to do everything in the browser.
+
+Installing the tools, briefly:
+
+| Tool | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| Docker | [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) or `winget install Docker.DockerDesktop` | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) or `brew install --cask docker` | `sudo apt install docker.io` + `sudo usermod -aG docker $USER` |
+| Podman (lighter alternative) | `winget install RedHat.Podman` | `brew install podman` | `sudo apt install podman` |
+| `oc` | `scoop install openshift-cli` | `brew install openshift-cli` | download from the [console](https://console.rahti.csc.fi/command-line-tools) |
+
+Check that both answer:
+
+```bash
+docker --version     # or: podman --version
+oc version --client
+```
+
+> Podman runs containers without root privileges, which is closer to how Rahti runs
+> them. The commands are the same: replace `docker` with `podman`.
 
 > The same computing project can also be used with cPouta or Roihu — Rahti is simply
 > added to its list of available services.

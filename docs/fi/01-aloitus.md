@@ -7,6 +7,7 @@
 
 - [Mikä Rahti 2 on](#mikä-rahti-2-on)
   - [Entä jos Rahti ei ole oikea paikka?](#entä-jos-rahti-ei-ole-oikea-paikka)
+  - [CSC:n muut palvelut samaan projektiin](#cscn-muut-palvelut-samaan-projektiin)
 - [Edellytykset](#edellytykset)
 - [Kirjautuminen selaimella](#kirjautuminen-selaimella)
 - [Projektin luonti](#projektin-luonti)
@@ -61,6 +62,39 @@ mallit pysyvät CSC:n puolella.
 | Sovellusten URL-avaruus | `*.2.rahtiapp.fi` |
 | Ulosmenevä IP (palomuurisääntöihin) | `86.50.229.150` — voi muuttua, tarkista aina [dokumentaatiosta](https://docs.csc.fi/cloud/rahti/configurations/egress-ip/) |
 
+### CSC:n muut palvelut samaan projektiin
+
+Rahti-oikeus avaa oven muihinkin CSC:n palveluihin samalla laskentaprojektilla. Näitä
+tarvitaan usein samassa sovelluksessa:
+
+| Palvelu | Mihin | Ohje |
+| --- | --- | --- |
+| **Satama** | Konttirekisteri (Harbor), imagejen jako projektien välillä, haavoittuvuusskannaus | [luku 2](02-julkaisu.md#vaihtoehto-b-satama-cscn-harbor) |
+| **Allas** | Objektitallennus S3-rajapinnalla, isot tiedostot ja varmuuskopiot | [luku 8](08-allas-s3.md) |
+| **Aitta** | Valmiit kieli- ja embeddings-mallit OpenAI-yhteensopivan API:n kautta | [csc-rahti-skilli](../../.claude/skills/csc-rahti/references/aitta-llm-api.md) |
+| **Roihu** | NVIDIA GH200 -GPU:t, mallien koulutus ja eräajot | [csc-roihu-skilli](../../.claude/skills/csc-roihu/) |
+| **LUMI** | AMD MI250X, EuroHPC-kiintiö | [csc-lumi-skilli](../../.claude/skills/csc-lumi/) |
+
+**Aitta** on erityisen kätevä opetuskäytössä: saat kieli- ja embeddings-mallit
+rajapinnan takaa ilman omaa GPU:ta ja ilman kaupallista API-avainta. Mallit ajetaan
+LUMI-supertietokoneella ja rajapinta on OpenAI-yhteensopiva, joten olemassa oleva
+koodi toimii vaihtamalla `baseURL`.
+
+![Aitta-palvelun etusivu](../images/aitta.jpg)
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://aitta-api.csc.fi/openai",   # AITTA_API_BASE
+    api_key="<AITTA_API_TOKEN>",                   # token: https://aitta-auth.csc.fi
+)
+```
+
+Mallivalikoimassa on mm. Llama 3.3, gpt-oss, Gemma 3, Qwen3-VL, embeddings-malleja ja
+suomalainen **Poro 2**. Useimmat mallit ovat "offline"-tilassa, eli ne pitää herättää
+kutsulla `POST /model/{id}/preload` ennen ensimmäistä chat-kutsua.
+
 ## Edellytykset
 
 1. **CSC-käyttäjätunnus** — luodaan [MyCSC](https://my.csc.fi/)-palvelussa.
@@ -70,6 +104,24 @@ mallit pysyvät CSC:n puolella.
    - CSC vahvistaa hakemuksen. Oikeuksien synkronointiin voi mennä ~10 minuuttia.
 3. **Docker tai Podman** paikallisesti, jos rakennat imaget itse.
 4. **`oc`-komentorivityökalu**, jos et halua tehdä kaikkea selaimessa.
+
+Työkalujen asennus lyhyesti:
+
+| Työkalu | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| Docker | [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) tai `winget install Docker.DockerDesktop` | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) tai `brew install --cask docker` | `sudo apt install docker.io` + `sudo usermod -aG docker $USER` |
+| Podman (kevyempi vaihtoehto) | `winget install RedHat.Podman` | `brew install podman` | `sudo apt install podman` |
+| `oc` | `scoop install openshift-cli` | `brew install openshift-cli` | lataa [konsolista](https://console.rahti.csc.fi/command-line-tools) |
+
+Tarkista lopuksi että molemmat vastaavat:
+
+```bash
+docker --version     # tai: podman --version
+oc version --client
+```
+
+> Podman ajaa kontit ilman root-oikeuksia ja on siksi lähempänä sitä, miten Rahti ajaa
+> ne. Komennot ovat samat: korvaa `docker` sanalla `podman`.
 
 > Sama laskentaprojekti voi olla käytössä myös cPoutassa tai Roihussa — Rahti lisätään
 > vain palveluvalikoimaan.
