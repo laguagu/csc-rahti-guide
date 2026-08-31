@@ -1,0 +1,234 @@
+# 6. Frontend ja backend Rahdissa
+
+> Kolme tapaa julkaista React (Vite) + Node.js -sovellus, ja miten palvelut kannattaa
+> kytkeä toisiinsa.
+
+## Sisällys
+
+- [Valitse arkkitehtuuri](#valitse-arkkitehtuuri)
+- [Vaihtoehto A: yksi palvelu, backend tarjoilee frontendin](#vaihtoehto-a-yksi-palvelu-backend-tarjoilee-frontendin)
+- [Vaihtoehto B: monorepo yhdessä kontissa](#vaihtoehto-b-monorepo-yhdessä-kontissa)
+- [Vaihtoehto C: erilliset palvelut](#vaihtoehto-c-erilliset-palvelut)
+- [API-polut eri malleissa](#api-polut-eri-malleissa)
+- [CORS](#cors)
+- [Terveystarkistukset ja Basic Auth](#terveystarkistukset-ja-basic-auth)
+- [Portit](#portit)
+
+## Valitse arkkitehtuuri
+
+| | A: Yksi palvelu | B: Monorepo, yksi kontti | C: Erilliset palvelut |
+| --- | --- | --- | --- |
+| Kontteja | 1 | 1 | 2+ |
+| CORS tarvitaan | ei | ei | kyllä (tai sisäinen kutsu) |
+| Skaalautuu erikseen | ei | ei | kyllä |
+| Deploy-monimutkaisuus | pieni | pieni | keskitaso |
+| Sopii | pieni sovellus, demo | tiimin monorepo | tuotanto, eri teknologiat |
+
+Jos et osaa päättää: aloita **A**:sta tai **B**:stä ja siirry **C**:hen kun frontend ja
+backend alkavat elää eri tahtia.
+
+## Vaihtoehto A: yksi palvelu, backend tarjoilee frontendin
+
+Buildaa frontend staattiseksi ja anna backendin tarjoilla se. Yksi portti, yksi
+osoite, ei CORSia.
+
+```bash
+cd frontend && npm run build          # tuottaa dist/
+cp -r dist ../backend/client/dist     # backendin staattinen kansio
+```
+
+```javascript
+// backend/index.js
+const express = require("express");
+const path = require("path");
+const app = require("./app");
+
+// Staattinen frontend
+app.use(express.static(path.join(__dirname, "client/dist")));
+
+// TÄMÄN on oltava API-reittien JÄLKEEN — muuten se nappaa myös /api-kutsut
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "client/dist", "index.html"));
+});
+
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+```
+
+Monorepossa kopiointi kannattaa automatisoida juuren `package.json`-tiedostoon:
+
+```json
+{
+  "scripts": {
+    "build:frontend": "cd frontend && npm install && npm run build",
+    "postbuild:frontend": "rm -rf backend/client/dist && cp -r frontend/dist backend/client/",
+    "build": "npm run build:frontend",
+    "start": "cd backend && npm start"
+  }
+}
+```
+
+## Vaihtoehto B: monorepo yhdessä kontissa
+
+Sama lopputulos kuin A:ssa, mutta kopiointi tapahtuu Dockerfilessa, joten paikallista
+build-vaihetta ei tarvita.
+
+```
+project/
+├── backend/       (index.js, package.json)
+├── frontend/      (src/, package.json)
+└── Dockerfile
+```
+
+```dockerfile
+# --- Build ---
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+COPY frontend/package*.json ./frontend/
+COPY backend/package*.json ./backend/
+RUN cd frontend && npm ci && cd ../backend && npm ci
+COPY . .
+RUN cd frontend && npm run build
+RUN mkdir -p backend/client && cp -r frontend/dist backend/client/
+
+# --- Runtime ---
+FROM node:22-alpine
+WORKDIR /app
+COPY --from=builder /app/backend ./backend
+RUN chown -R 1001:0 /app && chmod -R g+rwX /app
+USER 1001
+EXPOSE 8080
+CMD ["node", "backend/index.js"]
+```
+
+> `docker-compose.yml` on kätevä paikalliseen kehitykseen, mutta **Rahti ei aja
+> compose-tiedostoja**. Se lukee Dockerfilen ja Kubernetes-manifestit.
+
+## Vaihtoehto C: erilliset palvelut
+
+Frontend ja backend ovat omia Deploymenttejaan. Tärkein päätös: **anna backendille
+Route vai ei.**
+
+```
+Internet ──► Route ──► frontend-Service ──► frontend-Pod
+                                                 │  http://backend-api:8000
+                                                 ▼
+                                          backend-Service ──► backend-Pod
+                                          (ei Routea = ei näy internetiin)
+```
+
+Sisäinen kutsu palvelunimellä:
+
+```bash
+oc set env deployment/frontend -n <projekti> \
+  BACKEND_URL=http://backend-api:8000
+```
+
+```javascript
+// Palvelinpuolen koodissa (Next.js route handler, Express-proxy, …)
+const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
+const res = await fetch(`${backendUrl}/api/data`);
+```
+
+**Frontendin Dockerfile (Vite, staattinen tarjoilu):**
+
+```dockerfile
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:22-alpine
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+RUN npm install -g serve
+EXPOSE 8080
+CMD ["serve", "-s", "dist", "-p", "8080"]
+```
+
+`serve -s` (single) ohjaa kaikki polut `index.html`:ään, mikä on välttämätöntä
+client-side-reitityksessä (React Router). **Jos sovellus ei ole SPA**, jätä `-s` pois:
+`CMD ["serve", "dist", "-p", "8080"]`.
+
+Muista `.dockerignore`:
+
+```
+node_modules
+dist
+.env
+```
+
+> **Selaimesta tehtävä kutsu ei voi käyttää sisäistä nimeä.** `http://backend-api:8000`
+> toimii vain podin sisältä. Jos frontend on täysin staattinen ja kutsuu API:a selaimesta,
+> backend tarvitsee joko oman Routen (ja CORSin) tai frontendin palvelinpuolen proxyn.
+
+## API-polut eri malleissa
+
+**A ja B — sama origin, käytä suhteellisia polkuja:**
+
+```javascript
+const res = await fetch("/api/endpoint", { method: "POST", body: formData });
+```
+
+**C — täysi URL konfiguraatiosta:**
+
+```javascript
+// src/config.js
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8080";
+```
+
+Muista: `VITE_*` paistetaan bundleen build-aikana (ks.
+[05 Ympäristömuuttujat](05-ymparistomuuttujat.md#build-aika-vs-ajonaika)) — sinne ei
+laiteta salaisuuksia.
+
+## CORS
+
+Tarvitaan vain, kun **selain** kutsuu eri originia (vaihtoehto C julkisella backendillä).
+
+```javascript
+app.use(
+  cors({
+    origin: ["https://frontend.2.rahtiapp.fi"],
+    credentials: true,
+  })
+);
+```
+
+Älä käytä `origin: "*"` tuotannossa, jos mukana on evästeitä tai autentikointia.
+Sisäisiin kutsuihin CORSia ei tarvita lainkaan.
+
+## Terveystarkistukset ja Basic Auth
+
+Rahti odottaa, että podi kertoo olevansa valmis. Kaksi tapaa:
+
+```yaml
+# Avoin /health-polku — paras vaihtoehto
+readinessProbe:
+  httpGet: { path: /health, port: 8000 }
+
+# Sovellus on kokonaan autentikoinnin takana — HTTP-tarkistus saisi 401
+readinessProbe:
+  tcpSocket: { port: 3000 }
+```
+
+> **Tämä on aito sudenkuoppa.** Jos sovellus (esim. Next.js middleware tai
+> `proxy.ts`) vaatii Basic Authin **kaikilla** poluilla, `httpGet`-tarkistus saa 401,
+> podi ei koskaan siirry Ready-tilaan ja rullaus jää roikkumaan ikuisesti. Käytä joko
+> `tcpSocket`-tarkistusta tai jätä `/health` autentikoinnin ulkopuolelle.
+
+## Portit
+
+- Sovelluksen on kuunneltava **`0.0.0.0`**, ei `127.0.0.1` — muuten liikenne ei tule
+  perille podin ulkopuolelta.
+- Portin numerolla ei sinänsä ole väliä (3000, 8000, 8080), kunhan sama arvo on
+  Dockerfilen `EXPOSE`ssa, Deploymentin `containerPort`issa, Servicen `targetPort`issa
+  ja Routen `targetPort`issa.
+- Älä käytä porttia alle 1024 — satunnainen UID ei saa sitoa etuoikeutettua porttia.
+- Lue portti ympäristömuuttujasta, jos mahdollista: `const PORT = process.env.PORT || 8080`.
+
+---
+
+**Edellinen:** [5. Ympäristömuuttujat](05-ymparistomuuttujat.md) · **Seuraava:** [7. Tietokanta ja pgvector →](07-tietokanta.md)

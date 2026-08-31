@@ -1,12 +1,28 @@
 {
-  "name": "arvolaskuri-rahti",
-  "description": "Rahti ohjeita",
+  "name": "csc-rahti-guide",
+  "version": "2.0.0",
+  "description": "Practical guide to deploying applications on CSC Rahti 2 (OpenShift/OKD), in Finnish and English, with agent skills for Claude Code",
+  "private": true,
   "scripts": {
-    "format": "prettier --write '**/*.{js,ts,json,md}'"
+    "format": "prettier --write \"**/*.{js,mjs,ts,json,md}\"",
+    "check:links": "node scripts/check-links.mjs",
+    "test:skills": "pwsh -NoProfile -Command \"& '.claude/skills/csc-rahti/tests/RahtiCredentials.Tests.ps1'\""
   },
+  "keywords": [
+    "csc",
+    "rahti",
+    "openshift",
+    "okd",
+    "kubernetes",
+    "allas",
+    "satama",
+    "claude-code",
+    "agent-skills"
+  ],
   "author": "laguagu",
   "license": "MIT",
-  "dependencies": {
+  "devDependencies": {
+    "marked": "^18.0.11",
     "prettier": "^3.5.3"
   }
 }

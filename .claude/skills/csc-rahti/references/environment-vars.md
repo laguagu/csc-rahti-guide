@@ -1,85 +1,42 @@
-# Environment Variables
+# Environment Variables on Rahti
 
-## Build-time vs Runtime
+## The split that causes most bugs
 
-| Type | When Set | Example | Secret? |
-|------|----------|---------|---------|
-| `NEXT_PUBLIC_*` | Build-time (Dockerfile) | Baked into JS bundle | No |
-| Without prefix | Runtime (oc set env) | Read when pod starts | Can be |
+| Type | Set when | Where it ends up |
+|------|----------|------------------|
+| `NEXT_PUBLIC_*` / `VITE_*` | `docker build` | Baked into the JS bundle — **public, visible in the browser** |
+| Everything else | Pod start (`oc set env`, Secret) | Server-side only |
 
-## Build-time Variables (Next.js)
+A secret placed behind a `NEXT_PUBLIC_`/`VITE_` prefix is published to every
+visitor. A runtime-only variable that the build needs will fail the build
+instead — for that case use the ARG-placeholder pattern in
+[allas-s3.md](allas-s3.md#dockerfile-arg-placeholders-nextjs-specific).
 
-For Next.js apps, `NEXT_PUBLIC_*` variables are embedded during `docker build`.
-
-Create `.env.production` in your project:
-```bash
-NEXT_PUBLIC_API_URL=https://api.example.com
-NEXT_PUBLIC_APP_NAME=MyApp
-```
-
-These are **public** and visible in the browser.
-
-## Build-time Variables (Vite)
-
-Vite uses `VITE_*` prefix (similar to Next.js `NEXT_PUBLIC_*`):
+## Injecting runtime values
 
 ```bash
-VITE_API_URL=https://api.example.com
-VITE_APP_NAME=MyApp
+# From a gitignored file (fastest for many keys)
+oc create secret generic <app>-env --from-env-file=.env.local -n <namespace>
+oc set env deployment/<app> --from=secret/<app>-env -n <namespace>
+
+# Individual values
+oc set env deployment/<app> -n <namespace> DATABASE_URL=postgresql://... API_SECRET=...
+
+# From a ConfigMap (non-secret config)
+oc set env deployment/<app> -n <namespace> --from=configmap/<name>
+
+# Inspect / remove (trailing dash removes)
+oc set env deployment/<app> -n <namespace> --list
+oc set env deployment/<app> -n <namespace> SECRET_KEY-
 ```
 
-These are embedded during `docker build` and visible in browser.
+## Gotchas
 
-## Runtime Variables
-
-Set secret or dynamic values directly in OpenShift:
-
-```bash
-# Set single variable
-oc set env deployment/<deployment> -n <namespace> \
-  SECRET_KEY=your-secret-value
-
-# Set multiple variables
-oc set env deployment/<deployment> -n <namespace> \
-  DATABASE_URL=postgresql://... \
-  API_SECRET=your-api-secret
-
-# From file
-oc set env deployment/<deployment> -n <namespace> --from=configmap/<configmap-name>
-```
-
-## List Environment Variables
-
-```bash
-oc set env deployment/<deployment> -n <namespace> --list
-```
-
-## Remove Variable
-
-```bash
-oc set env deployment/<deployment> -n <namespace> SECRET_KEY-
-```
-
-Note the `-` at the end removes the variable.
-
-## Best Practices
-
-1. **Never commit secrets** to `.env.production`
-2. Use `NEXT_PUBLIC_*` only for truly public values
-3. Set API keys and secrets via `oc set env`
-4. Use ConfigMaps for non-secret configuration
-5. Use Secrets for sensitive data
-
-## Example: Next.js with Supabase
-
-**Build-time (.env.production):**
-```bash
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-```
-
-**Runtime (oc set env):**
-```bash
-oc set env deployment/myapp -n gaik \
-  SUPABASE_SERVICE_KEY=your-service-role-key
-```
+- **`--from-env-file` keeps inline comments.** `MODEL=gpt-5.6-sol  # note` stores
+  the trailing comment as part of the value. Prefer `--from-literal=KEY=value`,
+  or strip comments first. Verify:
+  `oc get secret <name> -o jsonpath='{.data.KEY}' | base64 -d`
+- **Secrets are not hot-reloaded.** After updating a Secret the running pods keep
+  the old values until `oc rollout restart deployment/<app> -n <namespace>`.
+- **Rotation:** `oc create secret ... --dry-run=client -o yaml | oc apply -f -`,
+  then restart the rollout.

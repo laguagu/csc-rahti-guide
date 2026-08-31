@@ -54,21 +54,21 @@ oc set env deployment/<frontend-deployment> -n <namespace> \
 
 Or in Next.js server-side code:
 ```typescript
-const backendUrl = process.env.BACKEND_URL || 'http://backend-api.gaik.svc.cluster.local:8000'
+const backendUrl = process.env.BACKEND_URL || 'http://backend-api.my-project.svc.cluster.local:8000'
 const response = await fetch(`${backendUrl}/api/data`)
 ```
 
 ## Example
 
-Frontend "report-creator" calling backend "python-api" in namespace "gaik":
+Frontend "report-creator" calling backend "python-api" in namespace "my-project":
 
 ```bash
 # Backend service exposes port 8000
-oc expose deployment/python-api --port=8000 -n gaik
+oc expose deployment/python-api --port=8000 -n my-project
 
 # Frontend uses internal URL
-oc set env deployment/report-creator -n gaik \
-  API_URL=http://python-api.gaik.svc.cluster.local:8000
+oc set env deployment/report-creator -n my-project \
+  API_URL=http://python-api.my-project.svc.cluster.local:8000
 ```
 
 ## Verify Internal Connectivity
@@ -81,8 +81,12 @@ oc exec -it deployment/<frontend> -n <namespace> -- sh
 curl http://<backend-service>:8000/health
 ```
 
-## Benefits
+## Gotchas
 
-- **Security:** Backend not exposed to internet
-- **Performance:** Internal network, no external routing
-- **Simplicity:** No TLS needed for internal traffic
+- Use `http://`, not `https://`, for in-cluster traffic — the Service has no TLS
+  certificate and the Route's edge termination does not apply here.
+- A backend reached only internally must **not** have a Route. If one exists, the
+  service is on the public internet regardless of how the frontend calls it.
+- Browser-side code cannot reach `*.svc.cluster.local`. Only server-side code
+  (Next.js route handlers, server components, SSR) may use the internal URL —
+  a `NEXT_PUBLIC_` variable pointing at a cluster DNS name always fails.

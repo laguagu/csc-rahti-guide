@@ -1,10 +1,12 @@
 # Dockerfile Examples for OpenShift/Rahti
 
+For Next.js apps that read secrets at runtime (e.g. Allas S3 keys), use the build-time ARG placeholder pattern in [allas-s3.md](allas-s3.md#dockerfile-arg-placeholders-nextjs-specific) so `next build` succeeds without real credentials.
+
 ## Contents
 - [Arbitrary UID Mechanism](#arbitrary-uid-mechanism)
 - [chmod Patterns Explained](#chmod-patterns-explained)
 - [Python + Red Hat UBI Example](#python--red-hat-ubi-example)
-- [Node.js/Bun Multi-Stage Example](#nodejsbun-multi-stage-example)
+- [Node.js/Bun Multi-Stage Example](#nodejsbun-multi-stage-example-nextjs-standalone)
 - [Alternative: Node.js with UBI](#alternative-nodejs-with-ubi)
 - [Common Mistakes](#common-mistakes)
 - [Writable Directories Checklist](#writable-directories-checklist)
@@ -77,55 +79,60 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 - Supported by Red Hat, security updates
 - `/opt/app-root/src` is the standard working directory
 
-## Node.js/Bun Multi-Stage Example
+## Node.js/Bun Multi-Stage Example (Next.js standalone)
 
-Next.js standalone build with Bun runtime.
+Next.js standalone build with Bun runtime, OpenShift-compatible.
 
 ```dockerfile
-# Build stage
-FROM oven/bun:1 AS builder
-
+FROM oven/bun:1 AS base
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies with build cache (speeds up repeated builds)
+FROM base AS deps
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --no-save --frozen-lockfile
 
-# Copy source and build
+# Build the application
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+# Increase Node.js heap for TypeScript type-checking (prevents OOM with 4Gi build limit)
+ENV NODE_OPTIONS="--max-old-space-size=3072"
 RUN bun run build
 
-# Production stage
-FROM oven/bun:1-slim AS runner
-
+# Production runner
+FROM base AS runner
 WORKDIR /app
 
-# Create non-root user and set permissions
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 --ingroup nodejs nextjs && \
-    mkdir -p /app/.next/cache && \
-    chown -R 1001:0 /app && \
-    chmod -R g+rwX /app
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+ENV NEXT_TELEMETRY_DISABLED=1
 
-# Copy standalone build
-COPY --from=builder --chown=1001:0 /app/.next/standalone ./
-COPY --from=builder --chown=1001:0 /app/.next/static ./.next/static
-COPY --from=builder --chown=1001:0 /app/public ./public
+COPY --from=builder /app/public ./public
+RUN mkdir .next
 
-USER 1001
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# OpenShift: arbitrary UID support — container runs as random UID with GID=0
+RUN chown -R 1001:0 /app && chmod -R g+rwX /app
 
 EXPOSE 3000
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
 CMD ["bun", "server.js"]
 ```
 
 **Key points:**
-- Multi-stage reduces final image size
-- `--chown=1001:0` on COPY sets correct ownership immediately
-- `.next/cache` directory needed for ISR/caching
-- `output: 'standalone'` in `next.config.js` required
+
+- `--mount=type=cache` speeds up `bun install` on repeated builds (buildah supports this)
+- `NODE_OPTIONS=--max-old-space-size=3072` prevents OOM during TS type-checking
+- `chown -R 1001:0 /app && chmod -R g+rwX /app` = OpenShift arbitrary UID pattern
+- `output: 'standalone'` in `next.config.ts` required
+- Set BuildConfig memory limit to 4Gi: `oc patch bc/<name> -n <ns> --type=merge -p '{"spec":{"resources":{"limits":{"memory":"4Gi","cpu":"2"},"requests":{"memory":"2Gi","cpu":"1"}}}}'`
+- Set image trigger for auto-rollout: `oc set triggers deployment/<name> --from-image=<imagestream>:latest -c <container> -n <ns>`
 
 ## Alternative: Node.js with UBI
 

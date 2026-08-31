@@ -64,37 +64,9 @@ You can have multiple routes pointing to the same service with different hostnam
 - Supporting multiple domains
 - A/B testing
 
-## Example
-
-For app "myapp" on port 3000 in namespace "gaik":
-
-```yaml
-kind: Route
-apiVersion: route.openshift.io/v1
-metadata:
-  name: myapp-custom
-  namespace: gaik
-  labels:
-    app: myapp
-    app.kubernetes.io/component: myapp
-    app.kubernetes.io/instance: myapp
-    app.kubernetes.io/name: myapp
-    app.kubernetes.io/part-of: myapp
-  annotations:
-    openshift.io/host.generated: "false"
-spec:
-  host: myapp-custom.2.rahtiapp.fi
-  to:
-    kind: Service
-    name: myapp
-    weight: 100
-  port:
-    targetPort: 3000-tcp
-  tls:
-    termination: edge
-    insecureEdgeTerminationPolicy: Redirect
-  wildcardPolicy: None
-```
+The `labels` block only affects grouping in the web console — it can be omitted.
+`openshift.io/host.generated: "false"` is what tells OpenShift to honour your
+`spec.host` instead of generating one.
 
 ## TLS Configuration
 
@@ -102,15 +74,13 @@ spec:
 - `insecureEdgeTerminationPolicy: Redirect` - HTTP redirects to HTTPS
 - All routes automatically get HTTPS on `*.2.rahtiapp.fi`
 
-## Route Timeout
+## Gotchas
 
-Default route timeout is 30 seconds. For long-running requests (AI processing, file uploads, etc.):
-
-```bash
-oc annotate route <route-name> -n <namespace> --overwrite \
-  haproxy.router.openshift.io/timeout=300s
-```
-
-**Symptoms of timeout issues:**
-- 504 Gateway Timeout
-- Backend logs show 200 OK but frontend gets error
+- **`targetPort: <port>-tcp` must match the Service's port name.** That naming
+  comes from `oc expose deployment/...`; a hand-written Service may name its port
+  differently or not at all. Mismatch gives a 503 from the router with healthy
+  pods. Check with `oc get svc <name> -o jsonpath='{.spec.ports}'` — a numeric
+  `targetPort` also works.
+- **Route timeout defaults to 30s** — see the 504 section in SKILL.md for the
+  `haproxy.router.openshift.io/timeout` annotation and how to confirm the
+  diagnosis.
