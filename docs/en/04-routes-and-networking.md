@@ -128,15 +128,15 @@ oc apply -f new-route.yaml
 curl -I https://<desired-name>.2.rahtiapp.fi
 ```
 
-**Example.** An app called `oppimisavustaja`, whose Service is `oppimisavustaja` on
+**Example.** An app called `learning-assistant`, whose Service is `learning-assistant` on
 port 3000:
 
 ```yaml
 spec:
-  host: oppimisavustaja.2.rahtiapp.fi
+  host: learning-assistant.2.rahtiapp.fi
   to:
     kind: Service
-    name: oppimisavustaja
+    name: learning-assistant
   port:
     targetPort: 3000-tcp
 ```
