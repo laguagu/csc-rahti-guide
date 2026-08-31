@@ -6,7 +6,8 @@
   "scripts": {
     "format": "prettier --write \"**/*.{js,mjs,ts,json,md}\"",
     "check:links": "node scripts/check-links.mjs",
-    "test:skills": "pwsh -NoProfile -Command \"& '.claude/skills/csc-rahti/tests/RahtiCredentials.Tests.ps1'\""
+    "test:skills": "pwsh -NoProfile -Command \"& '.claude/skills/csc-rahti/tests/RahtiCredentials.Tests.ps1'\"",
+    "build:pdf": "node scripts/build-pdf.mjs"
   },
   "keywords": [
     "csc",

@@ -45,8 +45,15 @@ Don't mix protocols within the same bucket.
 prefixing with your project number, e.g. `1234567-raw-data`. Lowercase letters,
 digits, and hyphens only — no special characters.
 
-> **Credentials and buckets are project-scoped.** Make sure you create the credentials
-> in the same project as the bucket — otherwise you'll get a 403 and won't know why.
+> **Three different "projects" — don't mix them up.** OpenStack's `project_XXXXXXX` is
+> the same **CSC computing project** whose number you gave the Rahti project in the
+> `csc_project` field ([chapter 1](01-getting-started.md#creating-a-project)). The
+> Rahti project — the namespace — is a different thing: it's a namespace that lives
+> inside the computing project.
+>
+> **Credentials and buckets are computing-project-scoped.** Make sure you create the
+> credentials in the same project as the bucket — otherwise you'll get a 403 and won't
+> know why.
 
 ## 2. Install the OpenStack tools
 

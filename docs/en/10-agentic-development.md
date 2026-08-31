@@ -14,6 +14,8 @@
 - [What the agent can't do](#what-the-agent-cant-do)
 - [Safety rules](#safety-rules)
 - [Editing the skills](#editing-the-skills)
+- [Skills across multiple machines](#skills-across-multiple-machines)
+- [Further reading](#further-reading)
 
 ## What a skill is
 
@@ -224,6 +226,61 @@ pwsh -NoProfile -Command "& '.claude/skills/csc-rahti/tests/RahtiCredentials.Tes
 
 **Do not** commit project-specific namespaces, credentials, customer names, or tokens
 into a skill if the repository is public.
+
+## Skills across multiple machines
+
+If you work across multiple machines, don't copy skills from one machine to another —
+they'll drift apart within a week. Keep one folder as the single source of truth and
+link to it:
+
+```powershell
+# A folder that syncs between machines (OneDrive, Dropbox, a git repo…)
+$src = "$HOME\OneDrive\agents-setup\skills"
+
+# Claude Code reads this path
+New-Item -ItemType Junction -Path "$HOME\.claude\skills" -Target $src
+```
+
+```bash
+# macOS / Linux
+ln -s ~/Sync/agents-setup/skills ~/.claude/skills
+```
+
+The same folder can serve several tools at once: one source, many links. Secrets don't
+belong in this folder — keep them separate (e.g. `agents-setup/env/`), so that sharing
+skills never shares tokens along with them.
+
+A git repo as the sync folder is the best option for a team: changes are reviewable
+and the history is visible.
+
+## Further reading
+
+**Skills in general**
+
+- [What are Skills?](https://support.claude.com/en/articles/12512176-what-are-skills) — Anthropic's overview
+- [Claude Code: Skills](https://code.claude.com/docs/en/skills) — the `SKILL.md` format, frontmatter fields, and lookup paths
+- [agentskills.io](https://agentskills.io) — the tool-agnostic specification this repository's skills follow
+
+**Packaging skills for wider distribution**
+
+If skills start to pile up and you want to share them across an organization, the next
+step is packaging them as a plugin — skills, tools, and configuration bundled as one
+installable unit:
+
+- [Agent plugins: package your skills, tools and more](https://developers.googleblog.com/agent-plugins-package-your-skills-tools-and-more/) — what a plugin contains and when it's worth it
+- [Claude Code: Plugins](https://code.claude.com/docs/en/plugins) — plugin structure and installation
+
+> As of this writing, the `agent-plugins.org` specification page doesn't respond with
+> a valid TLS certificate (the browser warns you), so the links above are the working
+> sources.
+
+This repository's four skills work as-is without packaging, so a plugin isn't needed
+until distribution grows beyond a handful of individual users.
+
+**CSC's own documentation**
+
+- [Rahti](https://docs.csc.fi/cloud/rahti/) · [Satama](https://docs.csc.fi/cloud/satama/) · [Allas](https://docs.csc.fi/data/Allas/)
+- [Roihu](https://docs.csc.fi/computing/systems-roihu/) · [LUMI](https://docs.lumi-supercomputer.eu/) · [Aitta](https://aitta.csc.fi/)
 
 ---
 

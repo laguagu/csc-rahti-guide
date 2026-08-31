@@ -219,6 +219,20 @@ curl -I http://localhost:8080
 An empty `endpoints` list is very common: the Service's `selector` doesn't match the
 pod's labels.
 
+**A classic case:** `oc new-app` labels pods `deployment=<name>`, not `app=<name>`.
+That's why `oc get pods -l app=<name>` returns "No resources found" even though the
+pod is up, and a hand-written `selector: {app: <name>}` leaves the Service empty.
+Check the actual labels before you guess:
+
+```bash
+oc get pods -n <project> --show-labels
+oc get svc <service> -n <project> -o jsonpath='{.spec.selector}'
+```
+
+![Deployment details: the pod selector is deployment=hello-rahti](../images/rahti-deployment-details.jpg)
+
+The console shows the same on the Deployment's *Details* tab under **Pod selector**.
+
 ## Unauthorized / login expired
 
 ```

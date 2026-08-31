@@ -80,7 +80,7 @@ Full credential lifecycle, revocation and multi-machine notes: [references/authe
 - Rahti internal image registry: `image-registry.apps.2.rahti.csc.fi`
 - Satama registry (CSC-wide, Harbor): `satama.csc.fi` — UI <https://satama.csc.fi/harbor/projects>
 - Route domain: `*.2.rahtiapp.fi`
-- Egress IP: `86.50.229.150` (for firewall rules). **Caveat:** CSC warns this may change — if several Rahti versions are run in parallel, each has a different egress IP. Do not hard-code without a plan to update. Always verify current value at docs.csc.fi/cloud/rahti/networking/.
+- Egress IP: `86.50.229.150` (for firewall rules). **Caveat:** CSC warns this may change — if several Rahti versions are run in parallel, each has a different egress IP. Do not hard-code without a plan to update. Always verify current value at docs.csc.fi/cloud/rahti/configurations/egress-ip/.
 
 ## Resource Limits (CSC Defaults)
 
@@ -94,7 +94,7 @@ Per-container defaults when a Deployment sets no `resources` block:
 | Memory limit | 1Gi |
 | Max limit/request ratio | 5x |
 
-The ceiling is the **CSC computing project quota** — initially 4 cores, 16 GiB RAM, 100 GiB storage — and it is *shared across every Rahti project* under that computing project, not a per-container maximum. Verify current values at [docs.csc.fi/cloud/rahti/usage/projects_and_quota/](https://docs.csc.fi/cloud/rahti/usage/projects_and_quota/).
+The ceiling is the **CSC computing project quota** — initially 4 cores, 16 GiB RAM, 100 GiB storage — and it is *shared across every Rahti project* under that computing project, not a per-container maximum. Verify current values at [docs.csc.fi/cloud/rahti/configurations/resource-quota/](https://docs.csc.fi/cloud/rahti/configurations/resource-quota/).
 
 **Check limits:**
 ```bash

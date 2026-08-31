@@ -6,6 +6,7 @@
 ## Contents
 
 - [What Rahti 2 is](#what-rahti-2-is)
+  - [What if Rahti isn't the right fit?](#what-if-rahti-isnt-the-right-fit)
 - [Prerequisites](#prerequisites)
 - [Logging in from the browser](#logging-in-from-the-browser)
 - [Creating a project](#creating-a-project)
@@ -24,10 +25,31 @@ if it crashes.
 
 | Rahti is a good fit for | Rahti is not a good fit for |
 | --- | --- |
-| Web apps and APIs | GPU computing and model training → [Roihu](https://docs.csc.fi/computing/roihu/) or [LUMI](https://docs.csc.fi/computing/lumi/) |
+| Web apps and APIs | GPU computing and model training → [Roihu](https://docs.csc.fi/computing/systems-roihu/) or [LUMI](https://docs.lumi-supercomputer.eu/) |
 | Always-on services | Batch jobs and Slurm jobs → Roihu |
 | Microservices and background services | Managing virtual machines → [cPouta](https://docs.csc.fi/cloud/pouta/) |
 | Demos and teaching | Containers that need root privileges (not possible, see below) |
+
+### What if Rahti isn't the right fit?
+
+Rahti is free for a CSC project and keeps data in Finland, which is hard to beat for
+teaching use. It isn't always the fastest route to everything, though:
+
+| Platform | When it beats Rahti | Watch out for |
+| --- | --- | --- |
+| [Vercel](https://vercel.com/docs) | A Next.js/React frontend, preview URLs on every PR, edge functions | The free tier doesn't allow commercial use; data is in the US by default |
+| [Render](https://render.com/docs) | A backend service + managed Postgres without Kubernetes | Free-tier services sleep when idle |
+| [Railway](https://docs.railway.com/) | The fastest "repo in, URL out" for experiments | Usage-based pricing can catch you out |
+| [Hetzner](https://docs.hetzner.com/) or [cPouta](https://docs.csc.fi/cloud/pouta/) | You need your own VM, a GPU, or root privileges | Maintenance, updates, and security are on you |
+
+In practice, the same Dockerfile works on all of these — the difference is who
+handles the configuration. On Rahti you write the Kubernetes objects yourself; on
+Vercel and Railway the platform guesses them for you. For teaching purposes, Rahti
+teaches more, because the objects stay visible.
+
+A common combination in student projects is a frontend on Vercel with a heavier
+backend + database on Rahti: you get a public demo URL easily, while the data and
+models stay on CSC's side.
 
 **Key addresses:**
 
@@ -196,6 +218,13 @@ oc describe AppliedClusterResourceQuotas   # usage for the whole computing proje
 oc describe limitranges -n <namespace>     # limits for an individual container
 ```
 
+The defaults land on the pod even if the Deployment doesn't request anything:
+
+```bash
+oc get pod <pod> -o jsonpath='{.spec.containers[0].resources}'
+# {"limits":{"cpu":"500m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"500Mi"}}
+```
+
 **LimitRange** determines what an individual container is allowed to request — and
 what it gets if you don't request anything:
 
@@ -219,9 +248,10 @@ Additional quota is requested case by case from the
 Rahti is a shared, multi-tenant environment, so containers are restricted:
 
 - **Root is not allowed.** A container that requires `USER root` will not start.
-- **Random UID.** A container gets a project-specific UID at startup (e.g.
-  `1000620000`). So don't write a `runAsUser` value in the manifest, and don't assume
-  UID `1001`. The group is always `0`.
+- **Random UID.** A container gets a project-specific UID at startup. This guide's
+  test app got `1006240000`, even though its Dockerfile says `USER 1001`. So don't
+  write a `runAsUser` value in the manifest, and don't assume a UID. **The group is
+  always `0`** — that's what the write-permission solution relies on.
 - **Restricted-v2 policy:** `allowPrivilegeEscalation` must not be `true`, all
   capabilities must be dropped (`capabilities.drop: ALL`, with the exception of
   `NET_BIND_SERVICE`), and `seccompProfile` must be either empty or `RuntimeDefault`.

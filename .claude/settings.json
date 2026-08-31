@@ -1,3 +1,15 @@
 {
-  "permissions": {}
+  "permissions": {
+    "allow": [
+      "Bash(oc get:*)",
+      "Bash(oc describe:*)",
+      "Bash(oc logs:*)",
+      "Bash(oc status:*)",
+      "Bash(oc whoami:*)",
+      "Bash(oc projects:*)",
+      "Bash(oc api-resources:*)",
+      "Bash(oc explain:*)",
+      "Bash(node scripts/check-links.mjs)"
+    ]
+  }
 }

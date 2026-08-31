@@ -226,6 +226,10 @@ oc get pods -n <projekti> --show-labels
 oc get svc <palvelu> -n <projekti> -o jsonpath='{.spec.selector}'
 ```
 
+![Deploymentin tiedot: Pod selector on deployment=hello-rahti](../images/rahti-deployment-details.jpg)
+
+Konsolissa sama näkyy Deploymentin *Details*-välilehdellä kohdassa **Pod selector**.
+
 ## Unauthorized / kirjautuminen vanhentunut
 
 ```

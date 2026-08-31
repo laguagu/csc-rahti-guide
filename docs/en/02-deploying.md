@@ -6,6 +6,7 @@
 ## Contents
 
 - [Overview](#overview)
+- [Fastest end-to-end path](#fastest-end-to-end-path)
 - [1. Build the image](#1-build-the-image)
 - [2. Choose a registry](#2-choose-a-registry)
   - [Option A: Rahti's internal registry](#option-a-rahtis-internal-registry)
@@ -35,6 +36,39 @@ Four objects are almost always enough:
 | **Deployment** | Keeps the desired number of pods running, handles rolling updates |
 | **Service** | A stable internal address for the pods (DNS name + load balancing) |
 | **Route** | The public HTTPS address, pointing to the Service |
+
+## Fastest end-to-end path
+
+This script has been run through as-is on Rahti 2 with the example app
+[`examples/hello-rahti`](../../examples/hello-rahti/). If you just want to see
+something working first, clone the repo and run this:
+
+```bash
+cd examples/hello-rahti
+oc project <project>
+
+oc create imagestream hello-rahti                      # BEFORE the push
+docker build --platform linux/amd64 -t hello-rahti .
+docker login -u unused -p $(oc whoami -t) image-registry.apps.2.rahti.csc.fi
+docker tag  hello-rahti image-registry.apps.2.rahti.csc.fi/<project>/hello-rahti:latest
+docker push image-registry.apps.2.rahti.csc.fi/<project>/hello-rahti:latest
+
+oc new-app --image-stream=hello-rahti                  # creates the Deployment
+oc expose deployment/hello-rahti --port=8080           # creates the Service — this does NOT happen automatically
+oc create route edge hello-rahti --service=hello-rahti --insecure-policy=Redirect
+
+curl -s https://$(oc get route hello-rahti -o jsonpath='{.spec.host}')/health
+```
+
+> **`oc new-app` doesn't create a Service.** It creates only a Deployment, and
+> creating the route then fails with the error *"you need to provide a route port
+> via --port when exposing a non-existent service"*. `oc expose deployment/<name>
+> --port=<port>` creates the Service with the right selector. This is one of the
+> most commonly hit snags in this guide — and it's missing from most tutorials
+> you'll find online.
+
+The rest of this chapter explains what each step does, and how to do it in a more
+durable way.
 
 ## 1. Build the image
 
@@ -73,24 +107,23 @@ docker run --env-file .env -p 3000:3000 myapp
 ### Option A: Rahti's internal registry
 
 ```bash
-# 1. Log in to the registry (requires a valid oc session)
+# 1. Create the ImageStream FIRST — without it, the push fails with an HTTP 500 error
+oc get is -n <project>                        # list existing ones
+oc create imagestream myapp -n <project>
+
+# 2. Log in to the registry (requires a valid oc session)
 docker login -u unused -p $(oc whoami -t) image-registry.apps.2.rahti.csc.fi
 
-# 2. Tag
+# 3. Tag
 docker tag myapp \
   image-registry.apps.2.rahti.csc.fi/<project>/myapp:latest
 
-# 3. Push
+# 4. Push
 docker push image-registry.apps.2.rahti.csc.fi/<project>/myapp:latest
 ```
 
-**The ImageStream must exist before you push**, otherwise the push fails with an HTTP
-500 error:
-
-```bash
-oc get is -n <project>                        # list existing ones
-oc create imagestream myapp -n <project>
-```
+If the ImageStream is missing, the push fails with `unexpected status from HEAD
+request … : 500`, which doesn't mention ImageStream anywhere. So remember the order.
 
 ![ImageStream list in the console](../images/rahti-imagestreams.jpg)
 
@@ -112,6 +145,12 @@ docker login -u unused -p $(oc create token pusher --duration=8760h) \
 Satama is CSC's own container registry, a service separate from Rahti. You log in with
 a **CLI secret** (Satama UI → your username → *User Profile* → *CLI Secret*), not your
 MyCSC password.
+
+![Satama projects in the Harbor UI](../images/satama-projects.jpg)
+
+In this view, `library` and `r_installation_*` are CSC's own public projects, which
+you can pull images from without logging in. `project_<number>` is your own computing
+project.
 
 ```bash
 docker login satama.csc.fi -u <csc-username>      # paste the CLI secret
@@ -264,6 +303,16 @@ spec:
 Note that inside the cluster, the image is referenced by
 `image-registry.openshift-image-registry.svc:5000/...`, not by the public
 `image-registry.apps.2.rahti.csc.fi` name.
+
+Two things worth knowing before you go looking for a bug in the wrong place:
+
+- **You can leave out the `resources` block entirely**, and the LimitRange supplies
+  the defaults (100m/500m CPU, 500Mi/1Gi memory). They don't show up in the
+  Deployment's spec, only on the pod:
+  `oc get pod <pod> -o jsonpath='{.spec.containers[0].resources}'`.
+- **`securityContext: {}` is intentional.** The `restricted-v2` SCC assigns the pod a
+  random UID (e.g. `1006240000`) in group 0. If you write a `runAsUser` value, the pod
+  gets rejected.
 
 ## Automatic restart on a new image
 

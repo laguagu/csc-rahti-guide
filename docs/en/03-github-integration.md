@@ -41,7 +41,10 @@ even though the SSH key is correctly set up in both GitHub and Rahti.
 
 **Workaround:**
 
-1. First create the app with a **Builder Image** (the form proceeds despite the error)
+1. First create the app with a **Builder Image**. The red "URL is valid but cannot be
+   reached" message stays under the field, but it's just a warning: the **Create**
+   button works and the project is created normally. The error only concerns
+   validation of the Dockerfile strategy.
 2. Then edit the BuildConfig (*Builds → BuildConfigs → Actions → Edit BuildConfig* or
    the YAML directly) to the Docker strategy:
 

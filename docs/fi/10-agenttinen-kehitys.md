@@ -9,6 +9,7 @@
 - [Mikä skilli on](#mikä-skilli-on)
 - [Repositorion skillit](#repositorion-skillit)
 - [Asennus](#asennus)
+  - [Vähemmän lupakyselyitä](#vähemmän-lupakyselyitä)
 - [Käyttö](#käyttö)
 - [UI vai CLI vai agentti](#ui-vai-cli-vai-agentti)
 - [Mitä agentti ei voi tehdä](#mitä-agentti-ei-voi-tehdä)
@@ -118,6 +119,14 @@ New-Item -ItemType Junction -Path "$HOME\.agents\skills\csc-rahti" `
 >
 > Jos työkalusi lukee ohjeensa `AGENTS.md`-tiedostosta, lisää sinne rivi, joka viittaa
 > tämän repositorion `docs/`-kansioon ja skilleihin.
+
+### Vähemmän lupakyselyitä
+
+Repossa on `.claude/settings.json`, joka sallii valmiiksi vain lukevat `oc`-komennot
+(`get`, `describe`, `logs`, `status`, `whoami`). Agentti voi siis tutkia tilannetta
+kysymättä joka kerta lupaa, mutta **jokainen kirjoittava komento** — `apply`, `delete`,
+`scale`, `set`, `rollout` — kysyy edelleen erikseen. Halutessasi voit poistaa tiedoston
+tai laajentaa listaa omaan makuusi.
 
 ### Riippuvuudet
 
@@ -229,7 +238,7 @@ viikossa. Pidä yksi kansio ainoana lähteenä ja linkitä siihen:
 
 ```powershell
 # Kansio joka synkronoituu koneiden välillä (OneDrive, Dropbox, git-repo…)
-$src = "$HOME\OneDrivegents-setup\skills"
+$src = "$HOME\OneDrive\agents-setup\skills"
 
 # Claude Code lukee tämän polun
 New-Item -ItemType Junction -Path "$HOME\.claude\skills" -Target $src
