@@ -104,6 +104,7 @@ const CSS = `
   .cover .toc { column-count: 2; font-size: 10.5pt; color: #333; margin-bottom: 2.5em; }
   .cover .toc div { break-inside: avoid; padding: .18em 0; }
   .cover .toc span { color: #7a8c8c; display: inline-block; width: 1.6em; }
+  .cover .toc a { color: #333; text-decoration: none; }
   .cover .foot { margin-top: auto; font-size: 9.5pt; color: #5a6b6b;
                  border-top: 1px solid #dfe3e3; padding-top: .8em; }
 `;
@@ -155,8 +156,13 @@ function build(lang) {
     .join("\n\n");
 
   const toc = sources
-    .map((t, i) => `<div><span>${i + 1}.</span>${chapterTitle(t)}</div>`)
+    .map((t, i) => `<div><span>${i + 1}.</span><a href="#ch${i + 1}">${chapterTitle(t)}</a></div>`)
     .join("\n");
+
+  // marked does not emit heading ids, so number the chapter <h1>s here. Chrome turns the
+  // resulting internal anchors into real PDF links, giving a clickable contents page.
+  let chapterIndex = 0;
+  const withIds = (html) => html.replace(/<h1>/g, () => `<h1 id="ch${++chapterIndex}">`);
 
   const logo = dataUri(LOGO);
   const date = new Date().toISOString().slice(0, 10);
@@ -174,7 +180,7 @@ function build(lang) {
   const html = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
 <title>${cfg.title}</title><style>${CSS}</style></head><body>
 ${cover}
-${inlineImages(marked.parse(body), cfg.dir)}
+${withIds(inlineImages(marked.parse(body), cfg.dir))}
 </body></html>`;
 
   mkdirSync(OUT, { recursive: true });

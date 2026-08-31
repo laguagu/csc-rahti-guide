@@ -47,13 +47,20 @@ const app = require("./app");
 app.use(express.static(path.join(__dirname, "client/dist")));
 
 // This MUST come AFTER the API routes — otherwise it also catches /api calls
-app.get("*", (req, res) => {
+// app.use works in both Express 4 and 5 (see the note below).
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, "client/dist", "index.html"));
 });
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Server running on ${PORT}`));
 ```
+
+> **Express 5 broke `app.get("*")`.** Guides online almost always write the SPA fallback
+> route as `app.get("*", …)`. That works in Express 4 but **throws in Express 5** with
+> `TypeError: Missing parameter name`. Express 5 is the default on npm, so a fresh
+> `npm install express` gets it. The `app.use` above works in both; if you specifically
+> want a route, the Express 5 form is `app.get("/*splat", …)`.
 
 In a monorepo, it's worth automating the copy step in the root `package.json`:
 
@@ -82,7 +89,7 @@ project/
 
 ```dockerfile
 # --- Build ---
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY frontend/package*.json ./frontend/
@@ -93,7 +100,7 @@ RUN cd frontend && npm run build
 RUN mkdir -p backend/client && cp -r frontend/dist backend/client/
 
 # --- Runtime ---
-FROM node:22-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY --from=builder /app/backend ./backend
 RUN chown -R 1001:0 /app && chmod -R g+rwX /app
@@ -134,14 +141,14 @@ const res = await fetch(`${backendUrl}/api/data`);
 **Frontend Dockerfile (Vite, static serving):**
 
 ```dockerfile
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
 RUN npm install -g serve
@@ -187,8 +194,21 @@ put secrets there.
 
 ## CORS
 
-Only needed when the **browser** calls a different origin (option C with a public
-backend).
+CORS only applies to calls made by the **browser** to a different origin. A `fetch` from
+the server side (a Next.js route handler, an Express proxy, anything leaving the pod)
+ignores CORS entirely.
+
+**The same parent domain does not mean the same origin.**
+`https://frontend.2.rahtiapp.fi` and `https://backend.2.rahtiapp.fi` are different
+origins, because an origin is scheme + the full hostname + port. Sharing the
+`.2.rahtiapp.fi` suffix does not help.
+
+**The best solution is to avoid CORS altogether:** don't give the backend a Route, and
+call it from the frontend's server using the internal name (`http://backend-api:8000`).
+Then the browser only ever sees one origin, no CORS is needed, and the backend is not on
+the internet.
+
+If the backend does need a public Route:
 
 ```javascript
 app.use(
@@ -199,8 +219,31 @@ app.use(
 );
 ```
 
-Don't use `origin: "*"` in production if cookies or authentication are involved.
-Internal calls need no CORS at all.
+### Three things that break CORS on Rahti
+
+1. **`origin: "*"` and `credentials: true` do not work together.** This is not a matter
+   of style: the browser rejects a response carrying `Access-Control-Allow-Origin: *`
+   if the request was made in `credentials: "include"` mode. List the origins
+   explicitly.
+
+2. **The preflight request is forgotten.** A call carrying an `Authorization` header or
+   `Content-Type: application/json` makes the browser send an `OPTIONS` request first.
+   If the backend does not answer it with a 2xx and the right headers, the actual
+   request is never sent. Test it separately:
+
+   ```bash
+   curl -i -X OPTIONS https://backend.2.rahtiapp.fi/api/data      -H "Origin: https://frontend.2.rahtiapp.fi"      -H "Access-Control-Request-Method: POST"      -H "Access-Control-Request-Headers: content-type"
+   ```
+
+   The expected response is 204 or 200 with `Access-Control-Allow-Origin` present.
+
+3. **Authentication kills the preflight.** The browser does **not** send cookies or an
+   `Authorization` header on a preflight request. If the app requires a login on every
+   path (Basic Auth, middleware), `OPTIONS` gets a 401 and the whole call fails. Let
+   `OPTIONS` through the authentication. Same trap as the health checks below.
+
+> The browser console error *"No 'Access-Control-Allow-Origin' header is present"*
+> usually means one of these three, not that the `cors()` call is missing entirely.
 
 ## Health checks and Basic Auth
 
@@ -228,7 +271,9 @@ readinessProbe:
 - The port number itself doesn't matter (3000, 8000, 8080), as long as the same value
   is used in the Dockerfile's `EXPOSE`, the Deployment's `containerPort`, the Service's
   `targetPort`, and the Route's `targetPort`.
-- Don't use a port below 1024 — a random UID can't bind a privileged port.
+- Don't use a port below 1024. A random UID cannot bind a privileged port without the
+  `NET_BIND_SERVICE` capability, the only one Rahti lets you add back. Listening on 8080
+  is the easier route.
 - Read the port from an environment variable where possible:
   `const PORT = process.env.PORT || 8080`.
 

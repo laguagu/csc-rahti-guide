@@ -17,7 +17,7 @@ silmämääräisesti että kontti käynnistyi, Service löysi podin ja Route vas
 | `Dockerfile` | Ei roottia, `chown 1001:0` + `chmod g+rwX`, `USER 1001` — toimii satunnaisella UID:llä |
 | `.dockerignore` | Pitää imagen pienenä |
 
-Ei riippuvuuksia, ei `npm install`ia. Image on noin 140 MB (`node:22-alpine`).
+Ei riippuvuuksia, ei `npm install`ia. Image on noin 140 MB (`node:24-alpine`).
 
 ## Kokeile paikallisesti
 

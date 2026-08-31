@@ -46,14 +46,21 @@ const app = require("./app");
 // Staattinen frontend
 app.use(express.static(path.join(__dirname, "client/dist")));
 
-// TÄMÄN on oltava API-reittien JÄLKEEN — muuten se nappaa myös /api-kutsut
-app.get("*", (req, res) => {
+// TÄMÄN on oltava API-reittien JÄLKEEN, muuten se nappaa myös /api-kutsut.
+// app.use toimii sekä Expressissä 4 että 5 (ks. huomio alla).
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, "client/dist", "index.html"));
 });
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Server running on ${PORT}`));
 ```
+
+> **Express 5 rikkoi `app.get("*")`.** Netin ohjeissa SPA:n fallback-reitti kirjoitetaan
+> lähes aina muotoon `app.get("*", …)`. Se toimii Expressissä 4, mutta **kaatuu Expressissä
+> 5** virheeseen `TypeError: Missing parameter name`. Express 5 on npm:n oletusversio, eli
+> tuore `npm install express` saa sen. Yllä oleva `app.use` toimii molemmissa; jos haluat
+> nimenomaan reitin, Express 5:n muoto on `app.get("/*splat", …)`.
 
 Monorepossa kopiointi kannattaa automatisoida juuren `package.json`-tiedostoon:
 
@@ -82,7 +89,7 @@ project/
 
 ```dockerfile
 # --- Build ---
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY frontend/package*.json ./frontend/
@@ -93,7 +100,7 @@ RUN cd frontend && npm run build
 RUN mkdir -p backend/client && cp -r frontend/dist backend/client/
 
 # --- Runtime ---
-FROM node:22-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY --from=builder /app/backend ./backend
 RUN chown -R 1001:0 /app && chmod -R g+rwX /app
@@ -134,14 +141,14 @@ const res = await fetch(`${backendUrl}/api/data`);
 **Frontendin Dockerfile (Vite, staattinen tarjoilu):**
 
 ```dockerfile
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
 RUN npm install -g serve
@@ -186,7 +193,19 @@ laiteta salaisuuksia.
 
 ## CORS
 
-Tarvitaan vain, kun **selain** kutsuu eri originia (vaihtoehto C julkisella backendillä).
+CORS koskee vain **selaimen** tekemiä kutsuja eri originiin. Palvelinpuolelta tehty
+`fetch` (Next.js route handler, Express-proxy, mikä tahansa podista lähtevä kutsu) ei
+välitä CORSista lainkaan.
+
+**Sama päädomain ei tarkoita samaa originia.** `https://frontend.2.rahtiapp.fi` ja
+`https://backend.2.rahtiapp.fi` ovat eri origineja, koska origin on protokolla + koko
+hostname + portti. Jaettu `.2.rahtiapp.fi`-pääte ei auta.
+
+**Paras ratkaisu on välttää CORS kokonaan:** älä anna backendille Routea, vaan kutsu
+sitä frontendin palvelimelta sisäisellä nimellä (`http://backend-api:8000`). Silloin
+selain näkee vain yhden originin, CORSia ei tarvita ja backend ei ole internetissä.
+
+Jos backend kuitenkin tarvitsee julkisen Routen:
 
 ```javascript
 app.use(
@@ -197,8 +216,32 @@ app.use(
 );
 ```
 
-Älä käytä `origin: "*"` tuotannossa, jos mukana on evästeitä tai autentikointia.
-Sisäisiin kutsuihin CORSia ei tarvita lainkaan.
+### Kolme asiaa jotka kaatavat CORSin Rahdissa
+
+1. **`origin: "*"` ja `credentials: true` eivät toimi yhdessä.** Tämä ei ole
+   tyyliseikka: selain hylkää vastauksen, jossa on `Access-Control-Allow-Origin: *`,
+   jos pyyntö tehtiin `credentials: "include"` -tilassa. Listaa originit
+   eksplisiittisesti.
+
+2. **Preflight-pyyntö unohtuu.** Kutsu, jossa on `Authorization`-header tai
+   `Content-Type: application/json`, saa selaimen lähettämään ensin `OPTIONS`-pyynnön.
+   Jos backend ei vastaa siihen 2xx-koodilla ja oikeilla headereilla, varsinaista
+   pyyntöä ei koskaan lähetetä. Testaa erikseen:
+
+   ```bash
+   curl -i -X OPTIONS https://backend.2.rahtiapp.fi/api/data      -H "Origin: https://frontend.2.rahtiapp.fi"      -H "Access-Control-Request-Method: POST"      -H "Access-Control-Request-Headers: content-type"
+   ```
+
+   Odotettu vastaus on 204 tai 200 ja mukana `Access-Control-Allow-Origin`.
+
+3. **Autentikointi tappaa preflightin.** Selain **ei** lähetä evästeitä eikä
+   `Authorization`-headeria preflight-pyynnössä. Jos sovellus vaatii kirjautumisen
+   kaikilla poluilla (Basic Auth, middleware), `OPTIONS` saa 401:n ja koko kutsu
+   epäonnistuu. Päästä `OPTIONS` läpi autentikoinnista. Sama ansa kuin
+   terveystarkistuksissa alla.
+
+> Selainkonsolin virhe *"No 'Access-Control-Allow-Origin' header is present"* tarkoittaa
+> useimmiten yhtä näistä kolmesta, ei sitä että `cors()`-kutsu puuttuisi kokonaan.
 
 ## Terveystarkistukset ja Basic Auth
 
@@ -226,7 +269,9 @@ readinessProbe:
 - Portin numerolla ei sinänsä ole väliä (3000, 8000, 8080), kunhan sama arvo on
   Dockerfilen `EXPOSE`ssa, Deploymentin `containerPort`issa, Servicen `targetPort`issa
   ja Routen `targetPort`issa.
-- Älä käytä porttia alle 1024 — satunnainen UID ei saa sitoa etuoikeutettua porttia.
+- Älä käytä porttia alle 1024. Satunnainen UID ei saa sitoa etuoikeutettua porttia
+  ilman `NET_BIND_SERVICE`-capabilityä, joka on ainoa jonka Rahdissa saa lisätä takaisin.
+  Helpompi tapa on kuunnella 8080:aa.
 - Lue portti ympäristömuuttujasta, jos mahdollista: `const PORT = process.env.PORT || 8080`.
 
 ---
