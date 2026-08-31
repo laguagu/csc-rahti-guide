@@ -3,7 +3,7 @@ node_modules
 .env.local
 !.env.example
 clouds.yaml
-*.pdf
+# generoidut PDF:t committoidaan docs/pdf/-kansioon
 kubeconfig
 rahti_github_key*
 build

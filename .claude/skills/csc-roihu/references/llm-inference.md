@@ -96,12 +96,20 @@ drains the project's whole GPU allocation overnight.
 
 ## Containers
 
-When the module's vLLM version is wrong for the model, or the environment has to be
-pinned, run a container instead of pip-installing into a venv — aarch64 wheels are
-patchy. Roihu-specific vLLM images are published in CSC's Satama registry; browse
-<https://satama.csc.fi/harbor/projects> for the current project and tag rather than
-trusting a pinned string here, since these move. Run with Apptainer or `tykky`. The
-`csc-rahti` skill covers Satama authentication.
+CSC publishes Roihu-specific images in the public Satama project
+`r_installation_aida` — including vLLM, PyTorch, TensorFlow and JAX builds. Use one
+when the module's version is wrong for the model, or to pin an environment. Run it with
+Apptainer/`tykky` rather than pip-installing into a venv — aarch64 wheels are patchy.
+
+```bash
+# Newest vLLM tag as of 2026-08: 0.19.1_cuda12.9_roihu
+satama.csc.fi/r_installation_aida/vllm:0.19.1_cuda12.9_roihu
+
+# Tags move — list the current ones without logging in (the project is public):
+curl -s "https://satama.csc.fi/api/v2.0/projects/r_installation_aida/repositories/vllm/artifacts?with_tag=true"   | jq -r '.[].tags[].name'
+```
+
+The `csc-rahti` skill covers Satama authentication for private projects.
 
 ## Verifying a run actually used the GPU
 

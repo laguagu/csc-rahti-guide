@@ -41,7 +41,10 @@ vaikka SSH-avain olisi oikein sekä GitHubissa että Rahdissa.
 
 **Kiertotie:**
 
-1. Luo sovellus ensin **Builder Imagella** (virheestä huolimatta lomake etenee)
+1. Luo sovellus ensin **Builder Imagella**. Punainen "URL is valid but cannot be
+   reached" jää näkyviin kentän alle, mutta se on pelkkä varoitus: **Create**-painike
+   toimii ja projekti syntyy normaalisti. Virhe koskee vain Dockerfile-strategian
+   validointia.
 2. Muokkaa sen jälkeen BuildConfigia (*Builds → BuildConfigs → Actions → Edit BuildConfig*
    tai suoraan YAML) Docker-strategiaan:
 

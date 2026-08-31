@@ -216,6 +216,16 @@ curl -I http://localhost:8080
 Tyhjä `endpoints`-lista on erittäin yleinen: Servicen `selector` ei täsmää podin
 labeleihin.
 
+**Klassinen tapaus:** `oc new-app` merkitsee podit labelilla `deployment=<nimi>`, ei
+`app=<nimi>`. Siksi `oc get pods -l app=<nimi>` palauttaa "No resources found" vaikka podi
+on pystyssä, ja käsin kirjoitettu `selector: {app: <nimi>}` jättää Servicen tyhjäksi.
+Tarkista todelliset labelit ennen kuin arvaat:
+
+```bash
+oc get pods -n <projekti> --show-labels
+oc get svc <palvelu> -n <projekti> -o jsonpath='{.spec.selector}'
+```
+
 ## Unauthorized / kirjautuminen vanhentunut
 
 ```

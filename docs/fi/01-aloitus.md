@@ -6,6 +6,7 @@
 ## Sisällys
 
 - [Mikä Rahti 2 on](#mikä-rahti-2-on)
+  - [Entä jos Rahti ei ole oikea paikka?](#entä-jos-rahti-ei-ole-oikea-paikka)
 - [Edellytykset](#edellytykset)
 - [Kirjautuminen selaimella](#kirjautuminen-selaimella)
 - [Projektin luonti](#projektin-luonti)
@@ -24,10 +25,31 @@ kaatuu.
 
 | Rahti sopii | Rahti ei sovi |
 | --- | --- |
-| Web-sovellukset ja API:t | GPU-laskenta ja mallien koulutus → [Roihu](https://docs.csc.fi/computing/roihu/) tai [LUMI](https://docs.csc.fi/computing/lumi/) |
+| Web-sovellukset ja API:t | GPU-laskenta ja mallien koulutus → [Roihu](https://docs.csc.fi/computing/systems-roihu/) tai [LUMI](https://docs.lumi-supercomputer.eu/) |
 | Jatkuvasti päällä olevat palvelut | Eräajot ja Slurm-jobit → Roihu |
 | Mikropalvelut ja taustapalvelut | Virtuaalikoneiden hallinta → [cPouta](https://docs.csc.fi/cloud/pouta/) |
 | Demot ja opetuskäyttö | Root-oikeuksia vaativat kontit (ei mahdollista, ks. alla) |
+
+### Entä jos Rahti ei ole oikea paikka?
+
+Rahti on ilmainen CSC-projektille ja pitää datan Suomessa, mikä tekee siitä
+opetuskäyttöön vaikeasti voitettavan. Kaikkeen se ei silti ole nopein reitti:
+
+| Alusta | Milloin parempi kuin Rahti | Huomioi |
+| --- | --- | --- |
+| [Vercel](https://vercel.com/docs) | Next.js/React-frontend, esikatselu-URLit jokaisesta PR:stä, reunatoiminnot | Ilmaistaso ei salli kaupallista käyttöä; data USA:ssa oletuksena |
+| [Render](https://render.com/docs) | Taustapalvelu + hallittu Postgres ilman Kubernetesia | Ilmaistason palvelut nukahtavat käyttämättöminä |
+| [Railway](https://docs.railway.com/) | Nopein "repo sisään, URL ulos" kokeiluihin | Käyttöperusteinen hinnoittelu yllättää helposti |
+| [Hetzner](https://docs.hetzner.com/) tai [cPouta](https://docs.csc.fi/cloud/pouta/) | Tarvitset itse virtuaalikonetta, GPU:ta tai root-oikeuksia | Ylläpito, päivitykset ja tietoturva ovat sinun |
+
+Käytännössä sama Dockerfile toimii kaikissa näissä — ero on siinä, kuka hoitaa
+konfiguraation. Rahdissa kirjoitat Kubernetes-objektit itse; Vercelissä ja Railwayssa
+alusta arvaa ne puolestasi. Opetusmielessä Rahti opettaa enemmän, koska objektit ovat
+näkyvissä.
+
+Opiskelijaprojektissa tavallinen yhdistelmä on frontend Vercelissä ja raskaampi
+backend + tietokanta Rahdissa: julkinen demo-URL syntyy helposti, mutta data ja
+mallit pysyvät CSC:n puolella.
 
 **Keskeiset osoitteet:**
 
@@ -195,6 +217,13 @@ oc describe AppliedClusterResourceQuotas   # koko laskentaprojektin käyttö
 oc describe limitranges -n <namespace>     # yksittäisen kontin rajat
 ```
 
+Oletukset osuvat podiin vaikka Deploymentissa ei pyytäisi mitään:
+
+```bash
+oc get pod <podi> -o jsonpath='{.spec.containers[0].resources}'
+# {"limits":{"cpu":"500m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"500Mi"}}
+```
+
 **LimitRange** määrää, mitä yksittäinen kontti saa pyytää — ja mitä se saa jos et pyydä
 mitään:
 
@@ -216,9 +245,10 @@ Lisäkiintiötä haetaan [CSC:n palvelupisteestä](mailto:servicedesk@csc.fi) ta
 Rahti on monen asiakkaan jaettu ympäristö, joten kontteja rajoitetaan:
 
 - **Root ei ole sallittu.** Kontti, joka vaatii `USER root`, ei käynnisty.
-- **Satunnainen UID.** Kontti saa käynnistyessään projektikohtaisen UID:n (esim.
-  `1000620000`). Älä siis kirjoita `runAsUser`-arvoa manifestiin äläkä oleta UID:tä
-  `1001`. Ryhmä on aina `0`.
+- **Satunnainen UID.** Kontti saa käynnistyessään projektikohtaisen UID:n. Ohjeen
+  testisovellus sai arvon `1006240000`, vaikka sen Dockerfile sanoo `USER 1001`. Älä siis
+  kirjoita `runAsUser`-arvoa manifestiin äläkä oleta UID:tä. **Ryhmä on aina `0`** — siihen
+  perustuu kirjoitusoikeuksien ratkaisu.
 - **Restricted-v2 -käytäntö:** `allowPrivilegeEscalation` ei saa olla `true`, kaikki
   capabilityt on pudotettava (`capabilities.drop: ALL`, poikkeuksena `NET_BIND_SERVICE`),
   ja `seccompProfile` joko tyhjä tai `RuntimeDefault`.

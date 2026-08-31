@@ -44,8 +44,13 @@ Allas tukee kahta protokollaa. **Käytä S3:a sovelluksissa.**
 CSC suosittelee etuliitteeksi projektin numeroa, esim. `1234567-raw-data`. Vain pieniä
 kirjaimia, numeroita ja väliviivoja — ei ääkkösiä.
 
-> **Tunnukset ja bucketit ovat projektikohtaisia.** Varmista että luot tunnukset samassa
-> projektissa, jossa bucket on — muuten saat 403-virheen etkä ymmärrä miksi.
+> **Kolme eri "projektia" — älä sekoita niitä.** OpenStackin `project_XXXXXXX` on sama
+> **CSC-laskentaprojekti**, jonka numeron annoit Rahti-projektille kentässä `csc_project`
+> ([luku 1](01-aloitus.md#projektin-luonti)). Rahti-projekti eli namespace on eri asia:
+> se on laskentaprojektin sisällä oleva nimiavaruus.
+>
+> **Tunnukset ja bucketit ovat laskentaprojektikohtaisia.** Varmista että luot tunnukset
+> samassa projektissa, jossa bucket on — muuten saat 403-virheen etkä ymmärrä miksi.
 
 ## 2. Asenna OpenStack-työkalut
 

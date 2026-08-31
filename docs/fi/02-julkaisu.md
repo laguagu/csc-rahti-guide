@@ -6,6 +6,7 @@
 ## Sisällys
 
 - [Kokonaiskuva](#kokonaiskuva)
+- [Nopein reitti alusta loppuun](#nopein-reitti-alusta-loppuun)
 - [1. Rakenna image](#1-rakenna-image)
 - [2. Valitse rekisteri](#2-valitse-rekisteri)
   - [Vaihtoehto A: Rahdin sisäinen rekisteri](#vaihtoehto-a-rahdin-sisäinen-rekisteri)
@@ -35,6 +36,37 @@ Neljä objektia riittää lähes aina:
 | **Deployment** | Pitää halutun määrän podeja pystyssä, hoitaa rullaavan päivityksen |
 | **Service** | Pysyvä sisäinen osoite podeille (DNS-nimi + kuormantasaus) |
 | **Route** | Julkinen HTTPS-osoite, joka osoittaa Serviceen |
+
+## Nopein reitti alusta loppuun
+
+Tämä komentosarja on ajettu läpi sellaisenaan Rahti 2:ssa esimerkkisovelluksella
+[`examples/hello-rahti`](../../examples/hello-rahti/). Jos haluat vain nähdä jonkin
+toimivan ensin, kloonaa repo ja aja nämä:
+
+```bash
+cd examples/hello-rahti
+oc project <projekti>
+
+oc create imagestream hello-rahti                      # ENNEN pushia
+docker build --platform linux/amd64 -t hello-rahti .
+docker login -u unused -p $(oc whoami -t) image-registry.apps.2.rahti.csc.fi
+docker tag  hello-rahti image-registry.apps.2.rahti.csc.fi/<projekti>/hello-rahti:latest
+docker push image-registry.apps.2.rahti.csc.fi/<projekti>/hello-rahti:latest
+
+oc new-app --image-stream=hello-rahti                  # luo Deploymentin
+oc expose deployment/hello-rahti --port=8080           # luo Servicen — EI tule automaattisesti
+oc create route edge hello-rahti --service=hello-rahti --insecure-policy=Redirect
+
+curl -s https://$(oc get route hello-rahti -o jsonpath='{.spec.host}')/health
+```
+
+> **`oc new-app` ei luo Serviceä.** Se luo pelkän Deploymentin, ja reitin luonti kaatuu
+> virheeseen *"you need to provide a route port via --port when exposing a non-existent
+> service"*. `oc expose deployment/<nimi> --port=<portti>` luo Servicen oikealla
+> valitsimella. Tämä on yksi tämän ohjeen useimmin kokeilluista kohdista — ja se
+> puuttuu useimmista netin ohjeista.
+
+Loput tästä luvusta selittää mitä kukin vaihe tekee ja miten sen tekee kestävämmin.
 
 ## 1. Rakenna image
 
@@ -73,24 +105,23 @@ docker run --env-file .env -p 3000:3000 sovellukseni
 ### Vaihtoehto A: Rahdin sisäinen rekisteri
 
 ```bash
-# 1. Kirjaudu rekisteriin (vaatii voimassa olevan oc-session)
+# 1. Luo ImageStream ENSIN — ilman sitä push kaatuu HTTP 500 -virheeseen
+oc get is -n <projekti>                        # listaa olemassa olevat
+oc create imagestream sovellukseni -n <projekti>
+
+# 2. Kirjaudu rekisteriin (vaatii voimassa olevan oc-session)
 docker login -u unused -p $(oc whoami -t) image-registry.apps.2.rahti.csc.fi
 
-# 2. Tagaa
+# 3. Tagaa
 docker tag sovellukseni \
   image-registry.apps.2.rahti.csc.fi/<projekti>/sovellukseni:latest
 
-# 3. Työnnä
+# 4. Työnnä
 docker push image-registry.apps.2.rahti.csc.fi/<projekti>/sovellukseni:latest
 ```
 
-**ImageStreamin on oltava olemassa ennen työntämistä**, muuten push kaatuu HTTP 500
--virheeseen:
-
-```bash
-oc get is -n <projekti>                        # listaa olemassa olevat
-oc create imagestream sovellukseni -n <projekti>
-```
+Jos ImageStream puuttuu, push päättyy virheeseen `unexpected status from HEAD request
+… : 500`, joka ei mainitse ImageStreamia sanallakaan. Muista siis järjestys.
 
 ![ImageStream-lista konsolissa](../images/rahti-imagestreams.jpg)
 
@@ -112,6 +143,11 @@ docker login -u unused -p $(oc create token pusher --duration=8760h) \
 Satama on CSC:n oma konttirekisteri, erillinen palvelu Rahdista. Kirjautuminen tapahtuu
 **CLI-salaisuudella** (Satama-käyttöliittymä → käyttäjänimi → *User Profile* → *CLI
 Secret*), ei MyCSC-salasanalla.
+
+![Satama-projektit Harbor-käyttöliittymässä](../images/satama-projects.jpg)
+
+Näkymässä `library` ja `r_installation_*` ovat CSC:n omia julkisia projekteja, joista
+saa vetää imagen ilman kirjautumista. `project_<numero>` on oma laskentaprojektisi.
 
 ```bash
 docker login satama.csc.fi -u <csc-tunnus>      # liitä CLI secret
@@ -262,6 +298,15 @@ spec:
 Huomaa, että klusterin sisällä imageen viitataan osoitteella
 `image-registry.openshift-image-registry.svc:5000/...`, ei julkisella
 `image-registry.apps.2.rahti.csc.fi`-nimellä.
+
+Kaksi asiaa, jotka kannattaa tietää ennen kuin etsii vikaa väärästä paikasta:
+
+- **`resources`-lohkon voi jättää poiskin**, jolloin LimitRange antaa oletukset
+  (100m/500m CPU, 500Mi/1Gi muisti). Ne eivät näy Deploymentin specissä vaan vasta
+  podissa: `oc get pod <podi> -o jsonpath='{.spec.containers[0].resources}'`.
+- **`securityContext: {}` on tarkoituksellinen.** SCC `restricted-v2` antaa podille
+  satunnaisen UID:n (esim. `1006240000`) ryhmässä 0. Jos kirjoitat `runAsUser`-arvon,
+  podi hylätään.
 
 ## Automaattinen uudelleenkäynnistys uudesta imagesta
 

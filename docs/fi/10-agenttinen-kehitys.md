@@ -14,6 +14,8 @@
 - [Mitä agentti ei voi tehdä](#mitä-agentti-ei-voi-tehdä)
 - [Turvasäännöt](#turvasäännöt)
 - [Skillien muokkaus](#skillien-muokkaus)
+- [Skillit useammalla koneella](#skillit-useammalla-koneella)
+- [Lue lisää](#lue-lisää)
 
 ## Mikä skilli on
 
@@ -219,6 +221,59 @@ pwsh -NoProfile -Command "& '.claude/skills/csc-rahti/tests/RahtiCredentials.Tes
 
 **Älä** committaa skilliin projektikohtaisia namespaceja, tunnuksia, asiakkaiden nimiä
 tai tokeneita, jos repositorio on julkinen.
+
+## Skillit useammalla koneella
+
+Jos käytät useampaa konetta, älä kopioi skillejä koneelta toiselle — ne eriytyvät
+viikossa. Pidä yksi kansio ainoana lähteenä ja linkitä siihen:
+
+```powershell
+# Kansio joka synkronoituu koneiden välillä (OneDrive, Dropbox, git-repo…)
+$src = "$HOME\OneDrivegents-setup\skills"
+
+# Claude Code lukee tämän polun
+New-Item -ItemType Junction -Path "$HOME\.claude\skills" -Target $src
+```
+
+```bash
+# macOS / Linux
+ln -s ~/Sync/agents-setup/skills ~/.claude/skills
+```
+
+Sama kansio voi palvella useaa työkalua yhtä aikaa: yksi lähde, monta linkkiä.
+Salaisuudet eivät kuulu tähän kansioon — pidä ne erillään (esim. `agents-setup/env/`),
+jotta skillien jakaminen ei koskaan jaa tokeneita.
+
+Git-repo synkronointikansiona on paras vaihtoehto tiimille: muutokset ovat
+katselmoitavissa ja historia näkyy.
+
+## Lue lisää
+
+**Skillit yleisesti**
+
+- [What are Skills?](https://support.claude.com/en/articles/12512176-what-are-skills) — Anthropicin yleiskuvaus
+- [Claude Code: Skills](https://code.claude.com/docs/en/skills) — `SKILL.md`-formaatti, frontmatter-kentät ja hakupolut
+- [agentskills.io](https://agentskills.io) — työkaluriippumaton spesifikaatio, jota tämän repon skillit noudattavat
+
+**Skillien paketointi laajempaan jakeluun**
+
+Jos skillejä alkaa kertyä ja niitä halutaan jakaa organisaatiossa, seuraava askel on
+paketoida ne pluginiksi — skillit, työkalut ja konfiguraatio yhtenä asennettavana
+kokonaisuutena:
+
+- [Agent plugins: package your skills, tools and more](https://developers.googleblog.com/agent-plugins-package-your-skills-tools-and-more/) — mitä plugin sisältää ja milloin se kannattaa
+- [Claude Code: Plugins](https://code.claude.com/docs/en/plugins) — plugin-rakenne ja asennus
+
+> Spesifikaatiosivu `agent-plugins.org` ei tätä kirjoitettaessa vastaa oikealla
+> TLS-sertifikaatilla (selain varoittaa), joten yllä on toimivat lähteet.
+
+Tämän repon neljä skilliä toimivat sellaisenaan ilman paketointia, joten pluginia ei
+tarvita ennen kuin jakelu kasvaa yksittäisiä käyttäjiä suuremmaksi.
+
+**CSC:n omat dokumentit**
+
+- [Rahti](https://docs.csc.fi/cloud/rahti/) · [Satama](https://docs.csc.fi/cloud/satama/) · [Allas](https://docs.csc.fi/data/Allas/)
+- [Roihu](https://docs.csc.fi/computing/systems-roihu/) · [LUMI](https://docs.lumi-supercomputer.eu/) · [Aitta](https://aitta.csc.fi/)
 
 ---
 
