@@ -7,8 +7,9 @@
 
 - [When this is worth it](#when-this-is-worth-it)
 - [Builder Image or your own Dockerfile](#builder-image-or-your-own-dockerfile)
-- [A known error: "URL is valid but cannot be reached"](#a-known-error-url-is-valid-but-cannot-be-reached)
-- [Step 1: SSH key for GitHub](#step-1-ssh-key-for-github)
+- [Warning: "URL is valid but cannot be reached"](#warning-url-is-valid-but-cannot-be-reached)
+  - [Fastest route: skip the form entirely](#fastest-route-skip-the-form-entirely)
+- [Step 1: Credentials for a private repository](#step-1-credentials-for-a-private-repository)
 - [Step 2: BuildConfig](#step-2-buildconfig)
 - [Step 3: Webhook](#step-3-webhook)
 - [Tracking builds](#tracking-builds)
@@ -28,39 +29,72 @@
 Dockerfile, quick to get started, sufficient for a typical Node.js or Python app.
 
 **Your own Dockerfile (Docker strategy)** — full control, multi-stage builds,
-necessary for e.g. a Vite/React frontend. Requires the workaround described below.
+necessary for e.g. a Vite/React frontend. Works from both the browser and the command
+line.
 
 > Builder image versions go out of date. Pick an up-to-date UBI-based version from the
 > list; a Node.js 18 builder that's years old no longer gets security updates.
 
-## A known error: "URL is valid but cannot be reached"
+## Warning: "URL is valid but cannot be reached"
 
-When you try to create a project directly with *Import from Git* using an SSH URL and
-the Dockerfile strategy, Rahti shows the error **"URL is valid but cannot be reached"**
-even though the SSH key is correctly set up in both GitHub and Rahti.
+When you enter a private repository's address into the *Import from Git* form, a red
+**"URL is valid but cannot be reached"** appears below the field. This is **not a bug**.
+Rahti tries to read the repository anonymously before you've supplied credentials, which
+naturally fails for a private repo. CSC documents this as expected behaviour.
 
-**Workaround:**
+Continue as normal and supply credentials under **Show advanced Git options → Source
+Secret → Create new Secret**. There are two options:
 
-1. First create the app with a **Builder Image**. The red "URL is valid but cannot be
-   reached" message stays under the field, but it's just a warning: the **Create**
-   button works and the project is created normally. The error only concerns
-   validation of the Dockerfile strategy.
-2. Then edit the BuildConfig (*Builds → BuildConfigs → Actions → Edit BuildConfig* or
-   the YAML directly) to the Docker strategy:
+| Method | Authentication type | When to use |
+| --- | --- | --- |
+| **Personal access token** | Basic Authentication | The simplest option. In GitHub: *Settings → Developer settings → Personal access tokens*, with `repo` scope. |
+| **SSH key** | SSH Key | When you want a repo-scoped deploy key rather than an account-wide token. Instructions below. |
 
-```yaml
-strategy:
-  type: Docker
-  dockerStrategy:
-    dockerfilePath: Dockerfile
+> Older guides — including earlier versions of this repo — described this as a bug that
+> forced you to first create the app with a Builder Image and swap the strategy
+> afterwards. **The workaround is not needed.** The Docker strategy from Git works,
+> which was verified by running `oc new-build` against a public repository with the
+> Docker strategy and the `--context-dir` flag — it built an image in 39 seconds.
+
+### Fastest route: skip the form entirely
+
+From the command line you don't need to fight the form's validation at all:
+
+```bash
+# Public repository, Dockerfile in a subdirectory
+oc new-build https://github.com/<org>/<repo>   --strategy=docker   --context-dir=<path/to/dockerfile>   --name=<app> -n <project>
+
+# Follow the build
+oc logs -f bc/<app> -n <project>
 ```
 
-Alternatively, create the BuildConfig entirely from the command line, so the form's
-validation bug doesn't get in the way (see step 2).
+For a private repository, create the secret and link it to the `builder` account first
+(see step 1), after which the same `oc new-build` works with the SSH URL.
 
-## Step 1: SSH key for GitHub
+## Step 1: Credentials for a private repository
 
-A public repository just needs an HTTPS URL — no key required. For a private one:
+A public repository needs nothing extra: the HTTPS URL is enough. For a private one,
+choose a token or an SSH key.
+
+### Option A: personal access token (simplest)
+
+1. In GitHub: *Settings → Developer settings → Personal access tokens*, with `repo`
+   scope
+2. Bring the token into Rahti:
+
+```bash
+oc create secret generic github-token   --from-literal=username=<github-username>   --from-literal=password=<token>   --type=kubernetes.io/basic-auth -n <project>
+
+oc secrets link builder github-token -n <project>
+```
+
+In the browser this is the same as *Source Secret → Create new Secret → Basic
+Authentication*.
+
+> The token is account-wide, so give it the narrowest possible scopes and an expiry
+> date. If you want access limited to a single repository, use an SSH key instead.
+
+### Option B: SSH key (repo-scoped deploy key)
 
 ```bash
 # 1. Create a key pair (empty passphrase — Rahti has no way to prompt for one)
@@ -174,6 +208,11 @@ oc start-build myapp -n <project>           # start manually
 is `main`. If the `ref` field isn't set, pushes to `main` are silently ignored with no
 error message. Set `spec.source.git.ref: main` — or in the browser, *Show advanced Git
 options → Git reference*.
+
+> In our own test, `oc new-build` without a `ref` used the repository's default branch,
+> which was `main`. The trap therefore most likely hits a BuildConfig created through the
+> browser. The fix is the same either way: set `ref` explicitly and you never have to
+> guess.
 
 **A failed build is a silent failure.** A crashed build doesn't break the running app:
 no new image is produced, and the pod just keeps running the old code. The pod shows

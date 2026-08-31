@@ -7,8 +7,9 @@
 
 - [Milloin tämä kannattaa](#milloin-tämä-kannattaa)
 - [Builder Image vai oma Dockerfile](#builder-image-vai-oma-dockerfile)
-- [Tunnettu virhe: "URL is valid but cannot be reached"](#tunnettu-virhe-url-is-valid-but-cannot-be-reached)
-- [Vaihe 1: SSH-avain GitHubiin](#vaihe-1-ssh-avain-githubiin)
+- [Varoitus "URL is valid but cannot be reached"](#varoitus-url-is-valid-but-cannot-be-reached)
+  - [Nopein tapa: ohita lomake kokonaan](#nopein-tapa-ohita-lomake-kokonaan)
+- [Vaihe 1: tunnukset yksityiselle repositoriolle](#vaihe-1-tunnukset-yksityiselle-repositoriolle)
 - [Vaihe 2: BuildConfig](#vaihe-2-buildconfig)
 - [Vaihe 3: Webhook](#vaihe-3-webhook)
 - [Buildien seuranta](#buildien-seuranta)
@@ -28,39 +29,69 @@
 Dockerfilea, nopea aloittaa, riittää tavalliselle Node.js- tai Python-sovellukselle.
 
 **Oma Dockerfile (Docker strategy)** — täysi kontrolli, monivaiheiset buildit,
-välttämätön esim. Vite/React-frontendille. Vaatii alla kuvatun kiertotien.
+välttämätön esim. Vite/React-frontendille. Toimii sekä selaimesta että komentoriviltä.
 
 > Builder imagen versiot vanhenevat. Valitse listasta ajantasainen UBI-pohjainen versio;
 > vuosia vanha Node.js 18 -builder ei enää saa tietoturvapäivityksiä.
 
-## Tunnettu virhe: "URL is valid but cannot be reached"
+## Varoitus "URL is valid but cannot be reached"
 
-Kun projektin yrittää luoda suoraan *Import from Git* -toiminnolla käyttäen SSH-osoitetta
-ja Dockerfile-strategiaa, Rahti näyttää virheen **"URL is valid but cannot be reached"**
-vaikka SSH-avain olisi oikein sekä GitHubissa että Rahdissa.
+Kun syötät *Import from Git* -lomakkeeseen yksityisen repositorion osoitteen, kentän alle
+ilmestyy punainen **"URL is valid but cannot be reached"**. Tämä **ei ole vika**. Rahti
+yrittää lukea repositorion nimettömänä ennen kuin olet antanut tunnuksia, eikä se
+tietenkään onnistu yksityisellä repolla. CSC dokumentoi tämän odotettuna käytöksenä.
 
-**Kiertotie:**
+Jatka normaalisti ja anna tunnukset kohdassa **Show advanced Git options → Source Secret
+→ Create new Secret**. Vaihtoehtoja on kaksi:
 
-1. Luo sovellus ensin **Builder Imagella**. Punainen "URL is valid but cannot be
-   reached" jää näkyviin kentän alle, mutta se on pelkkä varoitus: **Create**-painike
-   toimii ja projekti syntyy normaalisti. Virhe koskee vain Dockerfile-strategian
-   validointia.
-2. Muokkaa sen jälkeen BuildConfigia (*Builds → BuildConfigs → Actions → Edit BuildConfig*
-   tai suoraan YAML) Docker-strategiaan:
+| Tapa | Authentication type | Milloin |
+| --- | --- | --- |
+| **Personal access token** | Basic Authentication | Yksinkertaisin. GitHubissa *Settings → Developer settings → Personal access tokens*, oikeudeksi `repo`. |
+| **SSH-avain** | SSH Key | Kun haluat repokohtaisen deploy keyn etkä tilinlaajuista tokenia. Ohje alla. |
 
-```yaml
-strategy:
-  type: Docker
-  dockerStrategy:
-    dockerfilePath: Dockerfile
+> Vanhemmissa ohjeissa (myös tämän repon aiemmissa versioissa) tämä kuvattiin bugina,
+> joka pakottaisi luomaan sovelluksen ensin Builder Imagella ja vaihtamaan strategian
+> jälkikäteen. **Kiertotietä ei tarvita.** Docker-strategia gitistä toimii, ja se on
+> varmistettu ajamalla: `oc new-build` julkisesta repositoriosta Docker-strategialla ja
+> `--context-dir`-valitsimella rakensi imagen 39 sekunnissa.
+
+### Nopein tapa: ohita lomake kokonaan
+
+Komentoriviltä ei tarvitse taistella lomakkeen validoinnin kanssa lainkaan:
+
+```bash
+# Julkinen repositorio, Dockerfile alihakemistossa
+oc new-build https://github.com/<org>/<repo>   --strategy=docker   --context-dir=<polku/dockerfileen>   --name=<sovellus> -n <projekti>
+
+# Seuraa buildia
+oc logs -f bc/<sovellus> -n <projekti>
 ```
 
-Vaihtoehtoisesti luo BuildConfig kokonaan komentoriviltä, jolloin lomakkeen
-validointibugi ei häiritse (ks. vaihe 2).
+Yksityiselle repositoriolle luo ensin salaisuus ja linkitä se `builder`-tunnukselle
+(ks. vaihe 1), minkä jälkeen sama `oc new-build` toimii SSH-osoitteella.
 
-## Vaihe 1: SSH-avain GitHubiin
+## Vaihe 1: tunnukset yksityiselle repositoriolle
 
-Julkiselle repositoriolle riittää HTTPS-osoite eikä avainta tarvita. Yksityiselle:
+Julkiselle repositoriolle ei tarvita mitään: HTTPS-osoite riittää. Yksityiselle valitse
+token tai SSH-avain.
+
+### Vaihtoehto A: personal access token (yksinkertaisin)
+
+1. GitHubissa *Settings → Developer settings → Personal access tokens*, oikeudeksi `repo`
+2. Vie token Rahtiin:
+
+```bash
+oc create secret generic github-token   --from-literal=username=<github-tunnus>   --from-literal=password=<token>   --type=kubernetes.io/basic-auth -n <projekti>
+
+oc secrets link builder github-token -n <projekti>
+```
+
+Selaimessa sama on *Source Secret → Create new Secret → Basic Authentication*.
+
+> Token on tilinlaajuinen, joten anna sille mahdollisimman kapeat oikeudet ja
+> vanhenemispäivä. Jos haluat oikeuden vain yhteen repositorioon, käytä SSH-avainta.
+
+### Vaihtoehto B: SSH-avain (repokohtainen deploy key)
 
 ```bash
 # 1. Luo avainpari (tyhjä passphrase — Rahti ei osaa kysyä sitä)
@@ -170,10 +201,15 @@ oc start-build sovellukseni -n <projekti>    # käynnistä käsin
 
 ## Sudenkuopat
 
-**Haaran nimi.** Rahdin BuildConfigin oletushaara on `master`, GitHubin `main`. Jos
-`ref`-kenttää ei ole asetettu, `main`-haaran pushit jäävät huomiotta ilman virheilmoitusta.
+**Haaran nimi.** CSC varoittaa, että Rahdin BuildConfigin oletushaara on `master` ja
+GitHubin `main`, jolloin `main`-haaran pushit jäävät huomiotta ilman virheilmoitusta.
 Aseta `spec.source.git.ref: main` — tai selaimessa *Show advanced Git options → Git
 reference*.
+
+> Omassa testissä `oc new-build` ilman `ref`-kenttää käytti repositorion oletushaaraa
+> eli `main`ia. Ansa osuu siis todennäköisimmin selaimen kautta luotuun BuildConfigiin.
+> Korjaus on sama kummassakin tapauksessa: aseta `ref` eksplisiittisesti, niin et joudu
+> arvaamaan.
 
 **Epäonnistunut buildi on hiljainen vika.** Kaatunut buildi ei riko ajossa olevaa
 sovellusta: uutta imagea ei vain synny ja podi ajaa vanhaa koodia. Podi näyttää
